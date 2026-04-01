@@ -1,342 +1,237 @@
 # Quantumn Code
 
-An advanced AI-powered coding assistant CLI built in Rust.
+<div align="center">
+
+![Quantumn Code](https://img.shields.io/badge/Quantumn-Code-purple?style=for-the-badge)
+![Rust](https://img.shields.io/badge/Rust-1.70+-orange?style=for-the-badge&logo=rust)
+![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+
+**An advanced AI-powered coding assistant CLI built in Rust**
+
+[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Themes](#themes)
+
+</div>
+
+---
 
 ## Features
 
 - **Multi-Provider AI Support**: Works with Anthropic Claude, OpenAI, and Ollama (local LLMs)
+- **15+ CLI Commands**: chat, edit, commit, review, test, scaffold, and more
 - **Beautiful Themes**: Tokyo Night, Hacker (Matrix-style), Deep Black, and custom themes
-- **Git Integration**: AI-generated commit messages, branch management, PR creation
-- **Code Tools**: Read, write, edit files with AI assistance
-- **Test Runner**: Run tests with AI failure analysis
-- **Project Scaffolding**: Create new projects from templates
-- **Interactive TUI**: Comfortable terminal UI for long coding sessions
+- **Interactive TUI**: Split-pane terminal interface for comfortable coding sessions
+- **Session Management**: Save and resume conversations
+- **Git Integration**: AI-generated commit messages and PR descriptions
+- **Project Scaffolding**: Create new projects from templates (Rust, Python, Node, etc.)
+- **Syntax Highlighting**: Powered by syntect for beautiful code display
+- **Cross-Platform**: Works on Linux, macOS, and Windows
 
 ## Installation
 
-### Prerequisites
+### Option 1: Download Binary (Recommended)
 
-- Rust 1.70+ (install with `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-- Cargo (comes with Rust)
+Download the latest release for your platform:
 
-### Build from Source
+| Platform | Download |
+|----------|----------|
+| Linux x64 | `quantumn-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux ARM64 | `quantumn-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS Intel | `quantumn-x86_64-apple-darwin.tar.gz` |
+| macOS Apple Silicon | `quantumn-aarch64-apple-darwin.tar.gz` |
+| Windows | `quantumn-x86_64-pc-windows-gnu.zip` |
 
 ```bash
-git clone https://github.com/Akatsuki2r/Quantumn-code.git
-cd Quantumn-code
+# Linux/macOS quick install
+curl -sL https://github.com/Akatsuki2r/QuantumCode/releases/latest/download/quantumn-$(uname -m)-unknown-linux-gnu.tar.gz | tar xz
+sudo mv quantumn /usr/local/bin/
+```
+
+### Option 2: Cargo (Rust)
+
+```bash
+cargo install quantumn
+```
+
+### Option 3: npm
+
+```bash
+npm install -g @quantumn/code
+```
+
+### Option 4: Homebrew (macOS)
+
+```bash
+brew tap Akatsuki2r/quantumn-code
+brew install quantumn-code
+```
+
+### Option 5: AUR (Arch Linux)
+
+```bash
+yay -S quantumn-code
+```
+
+### Option 6: Build from Source
+
+```bash
+git clone https://github.com/Akatsuki2r/QuantumCode.git
+cd QuantumCode
 cargo build --release
+sudo cp target/release/quantumn /usr/local/bin/
 ```
 
-The binary will be at `target/release/quantumn`.
-
-## Quick Start
-
-```bash
-# Start interactive session
-quantumn
-
-# One-shot query
-quantumn "explain this error"
-
-# Edit a file with AI
-quantumn edit src/main.rs --prompt "add error handling"
-
-# Generate commit message
-quantumn commit
-
-# Run tests with AI analysis
-quantumn test
-
-# Create new project
-quantumn scaffold rust my-project
-
-# List available themes
-quantumn theme list
-
-# Set theme
-quantumn theme set tokyo_night
-```
-
-## Commands
+## Usage
 
 ### Interactive Mode
 
 ```bash
-quantumn                    # Start interactive session
-quantumn --model opus       # Start with specific model
-quantumn --theme hacker     # Start with specific theme
+quantumn
 ```
 
-### Chat
+This launches the interactive TUI where you can:
+- Chat with AI about your code
+- Edit files with AI assistance
+- Run git commands with AI-generated messages
+- Switch between themes and providers
+
+### Commands
 
 ```bash
-quantumn chat               # Interactive chat
-quantumn chat "prompt"       # One-shot query
+# Chat with AI
+quantumn chat "Explain this function"
+
+# Edit a file
+quantumn edit src/main.rs "Add error handling"
+
+# Generate commit message
+quantumn commit
+
+# Review code
+quantumn review src/lib.rs
+
+# Run tests with AI analysis
+quantumn test
+
+# Scaffold a new project
+quantumn scaffold rust my-app
+quantumn scaffold python my-script
+quantumn scaffold node my-api
+
+# Manage sessions
+quantumn session save feature-x
+quantumn session load feature-x
+quantumn session list
+
+# Switch themes
+quantumn theme set hacker
+quantumn theme list
+
+# Manage AI providers
+quantumn model list
+quantumn model use claude-sonnet
+quantumn model config
 ```
 
-### Code Editing
+### Keyboard Shortcuts (TUI)
 
-```bash
-quantumn edit <file>                    # Edit file interactively
-quantumn edit <file> --prompt "..."     # Edit with instructions
-```
-
-### Git Integration
-
-```bash
-quantumn commit              # Generate commit message
-quantumn commit --message "..."  # Use custom prompt
-```
-
-### Code Review
-
-```bash
-quantumn review              # Review staged changes
-quantumn review <files>...    # Review specific files
-```
-
-### Testing
-
-```bash
-quantumn test                # Run all tests
-quantumn test <path>          # Run tests at path
-```
-
-### Project Scaffolding
-
-```bash
-quantumn scaffold rust my-project    # Rust project
-quantumn scaffold python my-project   # Python project
-quantumn scaffold node my-project     # Node.js project
-quantumn scaffold web my-project      # Web project
-quantumn scaffold go my-project       # Go project
-```
-
-### Session Management
-
-```bash
-quantumn session list        # List saved sessions
-quantumn session resume       # Resume last session
-quantumn session save <name>  # Save current session
-```
-
-### Configuration
-
-```bash
-quantumn config show          # Show configuration
-quantumn config set <key> <value>  # Set value
-quantumn config edit          # Open config in editor
-```
-
-### Themes
-
-```bash
-quantumn theme list          # List themes
-quantumn theme set <name>     # Set theme
-quantumn theme current        # Show current theme
-quantumn theme preview <name> # Preview theme
-```
-
-### Models
-
-```bash
-quantumn model                # Show current model
-quantumn model --list         # List available models
-quantumn model anthropic      # Switch to Claude
-quantumn model openai         # Switch to OpenAI
-quantumn model ollama         # Switch to local LLM
-```
-
-## Interactive Commands
-
-Inside the TUI, use these slash commands:
-
-- `/help` - Show help
-- `/clear` - Clear conversation
-- `/model <name>` - Change model
-- `/theme <name>` - Change theme
-- `/commit` - Generate commit message
-- `/review` - Review code
-- `/test` - Run tests
-- `/status` - Show status
-- `/quit` - Exit
-
-### Keyboard Shortcuts
-
-- `Enter` - Send message
-- `Ctrl+C` - Quit
-- `Esc` - Exit current mode
-- `Ctrl+L` - Clear screen
-- `F1` - Toggle help
-- `F2` - Toggle file tree
-- `F3` - Toggle token count
-- `F4` - Change theme
-
-## Configuration
-
-Configuration is stored at:
-
-- Linux/macOS: `~/.config/quantumn/config.toml`
-- Windows: `%APPDATA%\quantumn\config.toml`
-
-### Example Configuration
-
-```toml
-[model]
-provider = "anthropic"
-default_model = "claude-sonnet-4-20250514"
-api_key_env = "ANTHROPIC_API_KEY"
-
-[git]
-commit_format = "{type}: {description}"
-include_coauthors = true
-conventional_commits = true
-
-[editor]
-tab_width = 4
-use_spaces = true
-line_numbers = true
-auto_save = 30
-
-[ui]
-theme = "tokyo_night"
-show_file_tree = true
-show_token_count = true
-show_cost = true
-animation_speed = 5
-```
-
-## API Keys
-
-Set your API keys as environment variables:
-
-```bash
-# Anthropic Claude
-export ANTHROPIC_API_KEY="your-key-here"
-
-# OpenAI
-export OPENAI_API_KEY="your-key-here"
-
-# Ollama (no key needed, just run locally)
-# Install: https://ollama.ai
-ollama pull llama3.2
-```
+| Key | Action |
+|-----|--------|
+| `Ctrl+S` | Save session |
+| `Ctrl+L` | Load session |
+| `Ctrl+T` | Cycle themes |
+| `Ctrl+P` | Switch provider |
+| `Ctrl+Q` | Quit |
+| `Tab` | Switch panes |
+| `Enter` | Send message |
 
 ## Themes
 
-### Built-in Themes
+### Default Theme
+The Claude-inspired theme with warm colors.
 
-| Theme | Description |
-|-------|-------------|
-| `default` | Claude Code inspired purple theme |
-| `tokyo_night` | Tokyo Night with purple/blue accents |
-| `hacker` | Matrix-style green on black |
-| `deep_black` | Minimal high contrast |
+### Tokyo Night
+Purple and blue accents inspired by the popular VSCode theme.
 
-### Custom Themes
+### Hacker Theme
+Matrix-style green on black for that terminal aesthetic.
 
-Create custom themes in `~/.config/quantumn/themes/<name>.toml`:
+### Deep Black
+High contrast theme for focused coding sessions.
 
-```toml
-name = "my_theme"
-description = "My custom theme"
-author = "Me"
+```bash
+# Set theme via CLI
+quantumn theme set tokyo_night
+quantumn theme set hacker
+quantumn theme set deep_black
+```
 
-[colors]
-background = "#1a1b26"
-foreground = "#c0caf5"
-accent = "#7aa2f7"
-# ... etc
+## AI Providers
 
-[syntax]
-keyword = "#bb9af7"
-string = "#9ece6a"
-# ... etc
+### Anthropic Claude
+
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+quantumn model use claude-sonnet
+```
+
+### OpenAI
+
+```bash
+export OPENAI_API_KEY=your_key_here
+quantumn model use gpt-4
+```
+
+### Ollama (Local)
+
+```bash
+# Start Ollama server
+ollama serve
+
+# Use local model
+quantumn model use ollama://llama2
 ```
 
 ## Project Structure
 
 ```
-QuantumCode/
+QuantumnCode/
+├── Cargo.toml           # Rust dependencies
 ├── src/
-│   ├── main.rs           # Entry point
-│   ├── cli.rs            # CLI argument parsing
-│   ├── app.rs            # Application state
-│   ├── config/           # Configuration system
-│   │   ├── settings.rs   # User settings
-│   │   └── themes.rs     # Theme definitions
-│   ├── providers/        # AI providers
-│   │   ├── anthropic.rs   # Claude API
-│   │   ├── openai.rs     # OpenAI API
-│   │   └── ollama.rs     # Local LLM
-│   ├── commands/         # CLI commands
-│   │   ├── chat.rs
-│   │   ├── edit.rs
-│   │   ├── git.rs
-│   │   └── ...
-│   ├── tui/              # Terminal UI
-│   │   ├── render.rs     # Rendering
-│   │   └── event.rs      # Event handling
-│   ├── tools/            # File tools
-│   │   ├── read_file.rs
-│   │   ├── write_file.rs
-│   │   └── ...
-│   └── utils/            # Utilities
-│       └── syntax.rs     # Syntax highlighting
-├── themes/               # Theme files
-│   ├── default.toml
-│   ├── tokyo_night.toml
-│   ├── hacker.toml
-│   └── deep_black.toml
-└── Cargo.toml
+│   ├── main.rs          # Entry point
+│   ├── cli.rs           # CLI argument parsing
+│   ├── app.rs           # Application state
+│   ├── commands/        # All CLI commands
+│   ├── providers/       # AI provider implementations
+│   ├── tui/             # Terminal UI components
+│   ├── tools/           # File/grep/bash tools
+│   └── utils/           # Utilities
+└── themes/              # Theme configuration files
 ```
-
-## Development
-
-```bash
-# Run in development mode
-cargo run
-
-# Run tests
-cargo test
-
-# Build release
-cargo build --release
-
-# Check code
-cargo clippy
-
-# Format code
-cargo fmt
-```
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Credits
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-Built with:
-- [clap](https://github.com/clap-rs/clap) - CLI argument parsing
-- [ratatui](https://github.com/ratatui-org/ratatui) - Terminal UI
-- [tokio](https://github.com/tokio-rs/tokio) - Async runtime
-- [reqwest](https://github.com/seanmonstar/reqwest) - HTTP client
+## License
 
-## Comparison to Claude Code
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-| Feature | Quantumn Code | Claude Code |
-|---------|---------------|-------------|
-| Language | Rust | Node.js |
-| Providers | Multi | Anthropic only |
-| Themes | 4+ custom | 1 |
-| Local LLM | Yes | No |
-| Open Source | Yes | No |
-| Speed | Native | Node.js |
+## Acknowledgments
+
+- Inspired by [Claude Code](https://code.claude.com)
+- Built with [Ratatui](https://ratatui.rs) for the TUI
+- Syntax highlighting by [syntect](https://github.com/trishume/syntect)
 
 ---
 
-**Quantumn Code** - *Code faster, think deeper.*
+<div align="center">
+
+Made with ❤️ by [NahanoMark](https://github.com/Akatsuki2r)
+
+</div>

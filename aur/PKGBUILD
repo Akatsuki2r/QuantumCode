@@ -1,0 +1,24 @@
+# Maintainer: NahanoMark <marknahano@gmail.com>
+pkgname=quantumn-code
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="AI-powered coding assistant CLI"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Akatsuki2r/QuantumCode"
+license=('MIT')
+depends=('gcc-libs')
+makedepends=('rust' 'cargo')
+source=("$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "QuantumCode-$pkgver"
+    cargo build --release
+}
+
+package() {
+    cd "QuantumCode-$pkgver"
+    install -Dm755 "target/release/quantumn" "$pkgdir/usr/bin/quantumn"
+    install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 "README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

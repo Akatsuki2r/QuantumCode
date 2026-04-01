@@ -1,0 +1,37 @@
+{
+  "name": "@quantumn/code",
+  "version": "0.1.0",
+  "description": "Quantumn Code - AI-powered coding assistant CLI",
+  "author": "NahanoMark",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Akatsuki2r/QuantumCode.git"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "coding",
+    "assistant",
+    "claude",
+    "chatgpt"
+  ],
+  "bin": {
+    "quantumn": "./bin/quantumn.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "homepage": "https://github.com/Akatsuki2r/QuantumCode#readme",
+  "bugs": {
+    "url": "https://github.com/Akatsuki2r/QuantumCode/issues"
+  }
+}

@@ -1,0 +1,10 @@
+Package: quantumn-code
+Version: 0.1.0
+Section: devel
+Priority: optional
+Architecture: amd64
+Maintainer: NahanoMark <marknahano@gmail.com>
+Description: AI-powered coding assistant CLI
+ Quantumn Code is an advanced AI-powered coding assistant
+ that helps you write, edit, and understand code.
+ Supports multiple AI providers including Claude, OpenAI, and Ollama.
