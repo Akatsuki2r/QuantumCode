@@ -74,6 +74,9 @@ pub trait Provider: Send + Sync {
     /// Send a message and get a response
     async fn send(&self, messages: Vec<Message>) -> Result<String, ProviderError>;
 
+    /// Send a message with a system prompt and get a response
+    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError>;
+
     /// Send a message and get a streaming response
     async fn send_stream(
         &self,

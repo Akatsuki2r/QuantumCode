@@ -1,0 +1,56 @@
+{
+  "name": "@quantumn/code",
+  "version": "0.1.0",
+  "description": "Quantumn Code - A local-first, high-performance AI-powered coding assistant CLI",
+  "author": "NahanoMark",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Akatsuki2r/QuantumCode.git"
+  },
+  "homepage": "https://quantumn.dev",
+  "bugs": {
+    "url": "https://github.com/Akatsuki2r/QuantumCode/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "coding",
+    "assistant",
+    "terminal",
+    "llm",
+    "claude",
+    "gpt",
+    "ollama",
+    "code-assistant"
+  ],
+  "bin": {
+    "quantumn": "./bin/quantumn"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "preuninstall": "node scripts/uninstall.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {},
+  "dependencies": {}
+}

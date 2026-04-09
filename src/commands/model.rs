@@ -24,6 +24,7 @@ fn list_models(provider: Option<String>) -> Result<()> {
         Some("anthropic") => list_anthropic_models(),
         Some("openai") => list_openai_models(),
         Some("ollama") => list_ollama_models(),
+        Some("llama_cpp") => list_llama_cpp_models(),
         None => {
             println!("Anthropic (Claude):");
             list_anthropic_models();
@@ -35,10 +36,14 @@ fn list_models(provider: Option<String>) -> Result<()> {
 
             println!("Ollama (local):");
             list_ollama_models();
+            println!();
+
+            println!("llama.cpp (local, high-performance):");
+            list_llama_cpp_models();
         }
         Some(p) => {
             println!("Unknown provider: {}", p);
-            println!("Available providers: anthropic, openai, ollama");
+            println!("Available providers: anthropic, openai, ollama, llama_cpp");
         }
     }
 
@@ -76,6 +81,17 @@ fn list_ollama_models() {
     println!("  Run 'ollama list' to see installed models.");
 }
 
+fn list_llama_cpp_models() {
+    println!("  llama3.2      - Meta Llama 3.2 (GGUF)");
+    println!("  llama3.1       - Meta Llama 3.1 (GGUF)");
+    println!("  mistral        - Mistral (GGUF)");
+    println!("  qwen2.5        - Qwen 2.5 (GGUF)");
+    println!("  deepseek-coder - DeepSeek Coder (GGUF)");
+    println!();
+    println!("  Requires llama-server binary and GGUF model files.");
+    println!("  Configure model paths in config.toml under [llama_cpp.model_paths]");
+}
+
 /// Set current provider
 fn set_provider(provider: &str) -> Result<()> {
     let mut settings = crate::config::Settings::load()?;
@@ -84,9 +100,10 @@ fn set_provider(provider: &str) -> Result<()> {
         "anthropic" => ("anthropic", "claude-sonnet-4-20250514"),
         "openai" => ("openai", "gpt-4o"),
         "ollama" => ("ollama", "llama3.2"),
+        "llama_cpp" => ("llama_cpp", "llama3.2"),
         _ => {
             println!("Unknown provider: {}", provider);
-            println!("Available providers: anthropic, openai, ollama");
+            println!("Available providers: anthropic, openai, ollama, llama_cpp");
             return Ok(());
         }
     };
@@ -97,6 +114,14 @@ fn set_provider(provider: &str) -> Result<()> {
 
     println!("✓ Provider set to: {}", provider);
     println!("  Default model: {}", default_model);
+
+    if provider == "llama_cpp" {
+        println!();
+        println!("Note: llama.cpp requires:");
+        println!("  1. llama-server binary in PATH");
+        println!("  2. GGUF model files configured in config.toml");
+        println!("  3. Or use Ollama as fallback (enabled by default)");
+    }
 
     Ok(())
 }
@@ -120,6 +145,22 @@ fn show_current_provider() -> Result<()> {
         println!();
         println!("To set your API key:");
         println!("  export {}=your-api-key", api_key_env);
+    }
+
+    // Show llama.cpp config if relevant
+    if settings.model.provider == "llama_cpp" {
+        println!();
+        println!("llama.cpp configuration:");
+        println!("  Enabled: {}", settings.llama_cpp.enabled);
+        println!("  Port: {}", settings.llama_cpp.default_port);
+        println!("  Fallback to Ollama: {}", settings.llama_cpp.fallback_to_ollama);
+        println!("  Auto-start: {}", settings.llama_cpp.auto_start);
+        if !settings.llama_cpp.model_paths.is_empty() {
+            println!("  Model paths:");
+            for (name, path) in &settings.llama_cpp.model_paths {
+                println!("    {}: {}", name, path);
+            }
+        }
     }
 
     Ok(())

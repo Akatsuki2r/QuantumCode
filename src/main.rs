@@ -8,6 +8,8 @@
 //! - Test runner with AI analysis
 //! - Project scaffolding
 
+#![allow(warnings)]
+
 use clap::Parser;
 use color_eyre::eyre::Result;
 
@@ -15,12 +17,15 @@ mod cli;
 mod app;
 mod config;
 mod providers;
+mod supervisor;
 mod commands;
 mod tui;
 mod tools;
 mod utils;
+mod prompts;
 
 use cli::{Cli, Commands};
+use prompts::Mode as PromptMode;
 
 /// Main entry point
 fn main() -> Result<()> {
@@ -55,7 +60,7 @@ async fn run(cli: Cli) -> Result<()> {
 
         // One-shot query mode
         Some(Commands::Chat { prompt, model }) => {
-            commands::chat::run(prompt, model.or(cli.model)).await
+            commands::chat::run(prompt, model.or(cli.model), PromptMode::Chat).await
         }
 
         Some(Commands::Edit { file, prompt, model }) => {
@@ -101,6 +106,14 @@ async fn run(cli: Cli) -> Result<()> {
         Some(Commands::Version) => {
             println!("Quantumn Code v{}", env!("CARGO_PKG_VERSION"));
             Ok(())
+        }
+
+        Some(Commands::Docs { section }) => {
+            commands::help::run(section).await
+        }
+
+        Some(Commands::Completions { shell }) => {
+            commands::completions::run(shell).await
         }
     }
 }

@@ -173,6 +173,54 @@ impl Provider for OpenAIProvider {
         Ok(text)
     }
 
+    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+        let api_key = self.api_key.as_ref()
+            .ok_or(ProviderError::AuthError("OPENAI_API_KEY not set".to_string()))?;
+
+        // Prepend system message if provided
+        let mut all_messages = Vec::new();
+        if let Some(sys) = system {
+            all_messages.push(OpenAIMessage {
+                role: "system".to_string(),
+                content: sys.to_string(),
+            });
+        }
+        all_messages.extend(self.convert_messages(messages));
+
+        let request = OpenAIRequest {
+            model: self.model.clone(),
+            messages: all_messages,
+            max_tokens: Some(4096),
+            stream: false,
+        };
+
+        let response = self.client
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::ApiError(error_text));
+        }
+
+        let result: OpenAIResponse = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::ApiError(e.to_string()))?;
+
+        let text = result.choices
+            .first()
+            .and_then(|c| c.message.content.clone())
+            .unwrap_or_default();
+
+        Ok(text)
+    }
+
     async fn send_stream(
         &self,
         messages: Vec<Message>,

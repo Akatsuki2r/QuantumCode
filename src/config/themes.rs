@@ -176,6 +176,7 @@ impl Theme {
     /// List available themes
     pub fn list() -> Result<Vec<String>> {
         let mut themes = vec![
+            "oxidized".to_string(),
             "default".to_string(),
             "tokyo_night".to_string(),
             "hacker".to_string(),
@@ -204,11 +205,46 @@ impl Theme {
     /// Get a built-in theme
     fn builtin(name: &str) -> Option<Self> {
         match name {
+            "oxidized" => Some(Self::oxidized()),
             "default" => Some(Self::default_theme()),
             "tokyo_night" => Some(Self::tokyo_night()),
             "hacker" => Some(Self::hacker()),
             "deep_black" => Some(Self::deep_black()),
             _ => None,
+        }
+    }
+
+    /// Oxidized theme - Rusty brown on black (default)
+    pub fn oxidized() -> Self {
+        Self {
+            name: "oxidized".to_string(),
+            description: "Oxidized - Elegant rusty brown on deep black, inspired by Rust".to_string(),
+            author: "Quantumn".to_string(),
+            colors: ThemeColors {
+                background: "#0f0f0f".to_string(),
+                foreground: "#d4c4a8".to_string(),
+                accent: "#c67b33".to_string(),
+                secondary: "#8b5a2b".to_string(),
+                success: "#7c9a5e".to_string(),
+                error: "#bf4a3a".to_string(),
+                warning: "#d49a4a".to_string(),
+                info: "#a67c52".to_string(),
+                selection_bg: "#3d2914".to_string(),
+                selection_fg: "#f5e6d3".to_string(),
+                border: "#4a3520".to_string(),
+                muted: "#6b5344".to_string(),
+            },
+            syntax: SyntaxColors {
+                keyword: "#d4a574".to_string(),
+                string: "#7c9a5e".to_string(),
+                number: "#bf7a4a".to_string(),
+                comment: "#5a4a3a".to_string(),
+                function: "#d4a574".to_string(),
+                r#type: "#c67b33".to_string(),
+                variable: "#e8d9c5".to_string(),
+                operator: "#d4a574".to_string(),
+                punctuation: "#a67c52".to_string(),
+            },
         }
     }
 

@@ -6,7 +6,7 @@ pub mod app;
 pub mod render;
 pub mod event;
 
-pub use app::TuiApp;
+pub use render::TuiApp;
 
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
@@ -73,7 +73,7 @@ fn run_app<B: Backend>(
 ) -> Result<()> {
     loop {
         // Draw frame
-        terminal.draw(|frame| render::render(frame, app))?;
+        terminal.draw(|frame| render::render(frame, app)).map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
 
         // Handle events
         if event::handle_events(app)? {

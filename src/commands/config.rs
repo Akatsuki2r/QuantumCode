@@ -114,7 +114,7 @@ fn edit_config() -> Result<()> {
         }
         _ => {
             println!("Could not open editor. Please edit the file manually.");
-            println!("  {:?} {:?}", config_path);
+            println!("  {:?}", config_path);
         }
     }
 

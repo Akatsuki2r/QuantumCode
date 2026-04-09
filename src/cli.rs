@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use clap_complete::{Shell, generate};
 
 /// Quantumn Code - An advanced AI-powered coding assistant CLI
 #[derive(Parser, Debug)]
@@ -71,7 +72,7 @@ pub enum Commands {
     /// Generate a git commit message with AI
     Commit {
         /// Custom commit message prompt
-        #[arg(short, long)]
+        #[arg(long)]
         message: Option<String>,
 
         /// Model to use
@@ -141,6 +142,18 @@ pub enum Commands {
 
     /// Show version information
     Version,
+
+    /// Show comprehensive help and documentation
+    Docs {
+        /// Help section: commands, providers, themes, shortcuts, slash, quick
+        section: Option<String>,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for (bash, zsh, fish, powershell, elvish)
+        shell: Option<String>,
+    },
 }
 
 /// Session management commands

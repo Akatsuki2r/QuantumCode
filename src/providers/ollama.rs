@@ -191,6 +191,44 @@ impl Provider for OllamaProvider {
         Ok(result.message.content)
     }
 
+    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+        // Prepend system message if provided
+        let mut all_messages = Vec::new();
+        if let Some(sys) = system {
+            all_messages.push(OllamaMessage {
+                role: "system".to_string(),
+                content: sys.to_string(),
+            });
+        }
+        all_messages.extend(self.convert_messages(messages));
+
+        let request = OllamaRequest {
+            model: self.model.clone(),
+            messages: all_messages,
+            stream: false,
+        };
+
+        let response = self.client
+            .post(format!("{}/api/chat", self.base_url))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::ApiError(error_text));
+        }
+
+        let result: OllamaResponse = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::ApiError(e.to_string()))?;
+
+        Ok(result.message.content)
+    }
+
     async fn send_stream(
         &self,
         messages: Vec<Message>,

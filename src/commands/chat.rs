@@ -1,13 +1,23 @@
 //! Chat command implementation
 
 use color_eyre::eyre::Result;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use crate::config::Settings;
+use crate::providers::{Provider, Message, Role};
+use crate::providers::anthropic::AnthropicProvider;
+use crate::providers::openai::OpenAIProvider;
+use crate::providers::ollama::OllamaProvider;
+use crate::providers::llama_cpp::LlamaCppProvider;
+use crate::supervisor::ModelSupervisor;
+use crate::prompts::{Mode, get_full_prompt};
 
 /// Run chat mode (one-shot or interactive)
-pub async fn run(prompt: Option<String>, model: Option<String>) -> Result<()> {
+pub async fn run(prompt: Option<String>, model: Option<String>, mode: Mode) -> Result<()> {
     match prompt {
         Some(p) => {
             // One-shot mode
-            run_one_shot(&p, model).await
+            run_one_shot(&p, model, mode).await
         }
         None => {
             // Interactive mode
@@ -16,31 +26,107 @@ pub async fn run(prompt: Option<String>, model: Option<String>) -> Result<()> {
     }
 }
 
+/// Get the appropriate provider based on settings and model name
+pub fn get_provider(model_name: &str, settings: &Settings) -> Box<dyn Provider> {
+    // Check if explicitly set to llama.cpp
+    if settings.model.provider == "llama_cpp" {
+        let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
+        let mut provider = LlamaCppProvider::new(supervisor);
+        provider.set_model(model_name.to_string());
+        return Box::new(provider);
+    }
+
+    // Auto-detect based on model name
+    let provider_name = if model_name.starts_with("gpt") || model_name.starts_with("o1") {
+        "openai"
+    } else if model_name.starts_with("claude") {
+        "anthropic"
+    } else {
+        // Default to Ollama for local models
+        "ollama"
+    };
+
+    match provider_name {
+        "anthropic" => {
+            let mut provider = AnthropicProvider::new();
+            provider.set_model(model_name.to_string());
+            Box::new(provider)
+        }
+        "openai" => {
+            let mut provider = OpenAIProvider::new();
+            provider.set_model(model_name.to_string());
+            Box::new(provider)
+        }
+        "llama_cpp" => {
+            let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
+            let mut provider = LlamaCppProvider::new(supervisor);
+            provider.set_model(model_name.to_string());
+            Box::new(provider)
+        }
+        _ => {
+            let mut provider = OllamaProvider::new();
+            provider.set_model(model_name.to_string());
+            Box::new(provider)
+        }
+    }
+}
+
 /// Run one-shot query
-async fn run_one_shot(prompt: &str, model: Option<String>) -> Result<()> {
+async fn run_one_shot(prompt: &str, model: Option<String>, mode: Mode) -> Result<()> {
     // Load settings
-    let settings = crate::config::Settings::load()?;
-    let model_name = model.unwrap_or(settings.model.default_model);
+    let settings = Settings::load()?;
+    let model_name = model.unwrap_or_else(|| settings.model.default_model.clone());
 
     println!("Quantumn Code - Using model: {}", model_name);
+    println!("Provider: {}", settings.model.provider);
+    println!("Mode: {}", mode);
     println!("Prompt: {}", prompt);
     println!();
 
-    // Determine provider
-    let provider_name = if model_name.starts_with("gpt") || model_name.starts_with("o1") {
-        "openai"
-    } else if model_name.starts_with("llama") || model_name.starts_with("mistral") || model_name.starts_with("deepseek") {
-        "ollama"
-    } else {
-        "anthropic"
+    // Get provider
+    let provider = get_provider(&model_name, &settings);
+
+    // Check if configured
+    if !provider.is_configured() {
+        println!("Provider not configured. Please set up your API key.");
+        return Ok(());
+    }
+
+    // Get system prompt for mode
+    let system_prompt = get_full_prompt(mode);
+
+    // Create user message
+    let user_message = Message {
+        role: Role::User,
+        content: prompt.to_string(),
+        name: None,
     };
 
-    println!("Provider: {}", provider_name);
-    println!();
+    // Send request with system prompt
+    match provider.send_with_system(vec![user_message.clone()], Some(&system_prompt)).await {
+        Ok(response) => {
+            println!("AI Response:");
+            println!("{}", response);
+        }
+        Err(e) => {
+            eprintln!("Error: {}", e);
 
-    // TODO: Actually send to AI
-    println!("AI response will be implemented in Phase 2.");
-    println!("For now, here's your prompt echoed: {}", prompt);
+            // Try fallback to Ollama if llama.cpp failed
+            if settings.model.provider == "llama_cpp" && settings.llama_cpp.fallback_to_ollama {
+                println!("\nFalling back to Ollama...");
+                let ollama_provider = OllamaProvider::with_model(model_name);
+                match ollama_provider.send(vec![user_message]).await {
+                    Ok(response) => {
+                        println!("Ollama Response:");
+                        println!("{}", response);
+                    }
+                    Err(e) => {
+                        eprintln!("Ollama fallback error: {}", e);
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }

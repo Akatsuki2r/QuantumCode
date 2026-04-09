@@ -45,8 +45,11 @@ pub fn highlight(code: &str, language: &str) -> String {
 
     let mut highlighted = String::new();
     for line in code.lines() {
-        match syntect::util::as_24_bit_terminal_escaped(&highlighter.highlight_line(line, syntax_set), false) {
-            Ok(colored) => highlighted.push_str(&colored),
+        match highlighter.highlight_line(line, syntax_set) {
+            Ok(regions) => {
+                let colored = syntect::util::as_24_bit_terminal_escaped(&regions, false);
+                highlighted.push_str(&colored);
+            }
             Err(_) => highlighted.push_str(line),
         }
         highlighted.push('\n');
@@ -80,8 +83,11 @@ pub fn highlight_with_theme(code: &str, language: &str, theme_name: &str) -> Str
 
     let mut highlighted = String::new();
     for line in code.lines() {
-        match syntect::util::as_24_bit_terminal_escaped(&highlighter.highlight_line(line, syntax_set), false) {
-            Ok(colored) => highlighted.push_str(&colored),
+        match highlighter.highlight_line(line, syntax_set) {
+            Ok(regions) => {
+                let colored = syntect::util::as_24_bit_terminal_escaped(&regions, false);
+                highlighted.push_str(&colored);
+            }
             Err(_) => highlighted.push_str(line),
         }
         highlighted.push('\n');

@@ -16,7 +16,7 @@ pub struct AnthropicProvider {
 }
 
 /// Anthropic API request
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct AnthropicRequest {
     model: String,
     max_tokens: usize,
@@ -27,25 +27,25 @@ struct AnthropicRequest {
 }
 
 /// Anthropic message format
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct AnthropicMessage {
     role: String,
     content: String,
 }
 
 /// Anthropic API response
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AnthropicResponse {
     content: Vec<AnthropicContent>,
     usage: Option<AnthropicUsage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AnthropicContent {
     text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 struct AnthropicUsage {
     input_tokens: usize,
     output_tokens: usize,
@@ -133,6 +133,46 @@ impl Provider for AnthropicProvider {
             max_tokens: 4096,
             messages: self.convert_messages(messages),
             system: None,
+            stream: false,
+        };
+
+        let response = self.client
+            .post(self.endpoint())
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::ApiError(error_text));
+        }
+
+        let result: AnthropicResponse = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::ApiError(e.to_string()))?;
+
+        let text = result.content
+            .first()
+            .map(|c| c.text.clone())
+            .unwrap_or_default();
+
+        Ok(text)
+    }
+
+    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+        let api_key = self.api_key.as_ref()
+            .ok_or(ProviderError::AuthError("ANTHROPIC_API_KEY not set".to_string()))?;
+
+        let request = AnthropicRequest {
+            model: self.model.clone(),
+            max_tokens: 4096,
+            messages: self.convert_messages(messages),
+            system: system.map(|s| s.to_string()),
             stream: false,
         };
 

@@ -143,7 +143,7 @@ fn render_chat(frame: &mut Frame, area: Rect, app: &App, colors: &crate::config:
     let paragraph = Paragraph::new(messages)
         .style(Style::default().fg(colors.foreground).bg(colors.background))
         .wrap(Wrap { trim: false })
-        .scroll(app.scroll_offset as u16);
+        .scroll((app.scroll_offset as u16, 0));
 
     frame.render_widget(paragraph, area);
 }

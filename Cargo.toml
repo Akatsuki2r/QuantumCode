@@ -2,20 +2,40 @@
 name = "quantumn"
 version = "0.1.0"
 edition = "2021"
-authors = ["NahanoMark"]
-description = "Quantumn Code - An advanced AI-powered coding assistant CLI"
+authors = ["NahanoMark <contact@quantumn.dev>"]
+description = "Quantumn Code - A local-first, high-performance AI-powered coding assistant CLI built in Rust"
 license = "MIT"
-repository = "https://github.com/Akatsuki2r/Quantumn-code"
-keywords = ["cli", "ai", "coding", "assistant", "terminal"]
-categories = ["command-line-utilities", "development-tools"]
+repository = "https://github.com/Akatsuki2r/QuantumCode"
+homepage = "https://quantumn.dev"
+documentation = "https://docs.quantumn.dev"
+readme = "README.md"
+keywords = ["cli", "ai", "coding", "assistant", "terminal", "llm", "claude", "gpt", "ollama"]
+categories = ["command-line-utilities", "development-tools", "development-tools::coding-assistants"]
+exclude = [
+    "target/",
+    ".git/",
+    ".github/",
+    "tests/",
+    "*.md",
+    "docs/",
+    "themes/",
+]
+rust-version = "1.70"
 
 [[bin]]
 name = "quantumn"
 path = "src/main.rs"
 
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
+
 [dependencies]
 # CLI argument parsing
-clap = { version = "4", features = ["derive", "color", "suggestions"] }
+clap = { version = "4", features = ["derive", "color", "suggestions", "env"] }
+clap_complete = "4"
 
 # Terminal UI
 ratatui = "0.30"
@@ -26,9 +46,10 @@ tui-textarea = "0.7"
 tokio = { version = "1", features = ["full", "rt-multi-thread"] }
 async-trait = "0.1"
 futures = "0.3"
+async-stream = "0.3"
 
 # HTTP client for API calls
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -74,9 +95,30 @@ regex = "1"
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
+tempfile = "3"
 
-[profile.release]
-lto = true
-codegen-units = 1
-opt-level = 3
-strip = true
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.deb]
+maintainer = "NahanoMark <contact@quantumn.dev>"
+copyright = "2024, NahanoMark <contact@quantumn.dev>"
+license-file = ["LICENSE", "4"]
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/quantumn", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/quantumn/", "644"],
+]
+
+[package.metadata.rpm]
+package = "quantumn-code"
+license = "MIT"
+summary = "Quantumn Code - AI coding assistant CLI"
+url = "https://quantumn.dev"
+release = "1"
+
+[package.metadata.rpm.targets]
+quantumn-code = { path = "/usr/bin/quantumn" }

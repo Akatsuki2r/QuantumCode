@@ -1,5 +1,6 @@
 //! User settings configuration
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,34 @@ pub enum ProviderType {
     Anthropic,
     OpenAI,
     Ollama,
+    LlamaCpp,
+}
+
+/// llama.cpp configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlamaCppConfig {
+    /// Enable llama.cpp provider
+    pub enabled: bool,
+    /// Default port for llama.cpp server
+    pub default_port: u16,
+    /// Model name to GGUF file path mapping
+    pub model_paths: HashMap<String, String>,
+    /// Fallback to Ollama if llama.cpp fails
+    pub fallback_to_ollama: bool,
+    /// Auto-start llama.cpp server when needed
+    pub auto_start: bool,
+}
+
+impl Default for LlamaCppConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            default_port: 8080,
+            model_paths: HashMap::new(),
+            fallback_to_ollama: true,
+            auto_start: false, // Disabled by default since it requires llama-server binary
+        }
+    }
 }
 
 /// Model configuration
@@ -97,7 +126,7 @@ pub struct UIConfig {
 impl Default for UIConfig {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "oxidized".to_string(),
             show_file_tree: true,
             show_token_count: true,
             show_cost: true,
@@ -119,6 +148,8 @@ pub struct Settings {
     pub ui: UIConfig,
     /// Custom keybindings
     pub keybindings: std::collections::HashMap<String, String>,
+    /// llama.cpp configuration
+    pub llama_cpp: LlamaCppConfig,
 }
 
 impl Default for Settings {
@@ -129,6 +160,7 @@ impl Default for Settings {
             editor: EditorConfig::default(),
             ui: UIConfig::default(),
             keybindings: std::collections::HashMap::new(),
+            llama_cpp: LlamaCppConfig::default(),
         }
     }
 }
@@ -197,6 +229,10 @@ impl Settings {
             "ui.show_token_count" => Some(self.ui.show_token_count.to_string()),
             "ui.show_cost" => Some(self.ui.show_cost.to_string()),
             "ui.animation_speed" => Some(self.ui.animation_speed.to_string()),
+            "llama_cpp.enabled" => Some(self.llama_cpp.enabled.to_string()),
+            "llama_cpp.default_port" => Some(self.llama_cpp.default_port.to_string()),
+            "llama_cpp.fallback_to_ollama" => Some(self.llama_cpp.fallback_to_ollama.to_string()),
+            "llama_cpp.auto_start" => Some(self.llama_cpp.auto_start.to_string()),
             _ => None,
         }
     }
@@ -229,6 +265,14 @@ impl Settings {
                 .wrap_err("Invalid boolean value")?,
             "ui.animation_speed" => self.ui.animation_speed = value.parse()
                 .wrap_err("Invalid number")?,
+            "llama_cpp.enabled" => self.llama_cpp.enabled = value.parse()
+                .wrap_err("Invalid boolean value")?,
+            "llama_cpp.default_port" => self.llama_cpp.default_port = value.parse()
+                .wrap_err("Invalid port number")?,
+            "llama_cpp.fallback_to_ollama" => self.llama_cpp.fallback_to_ollama = value.parse()
+                .wrap_err("Invalid boolean value")?,
+            "llama_cpp.auto_start" => self.llama_cpp.auto_start = value.parse()
+                .wrap_err("Invalid boolean value")?,
             _ => return Err(color_eyre::eyre::eyre!("Unknown setting: {}", key)),
         }
         Ok(())
