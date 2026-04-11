@@ -515,7 +515,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Inspired by [Claude Code](https://code.claude.com)
 - Built with [Ratatui](https://ratatui.rs) for the TUI
 - Syntax highlighting by [syntect](https://github.com/trishume/syntect)
-
+                                    
 ---
 
 <div align="center">
