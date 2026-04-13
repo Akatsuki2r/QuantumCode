@@ -66,10 +66,7 @@ Summarize large outputs. Skip boilerplate.
 pub fn get_safety_prompts() -> String {
     format!(
         "{}\n{}\n{}\n{}",
-        FILE_SAFETY_PROMPT,
-        GIT_SAFETY_PROMPT,
-        SHELL_SAFETY_PROMPT,
-        ERROR_HANDLING_PROMPT
+        FILE_SAFETY_PROMPT, GIT_SAFETY_PROMPT, SHELL_SAFETY_PROMPT, ERROR_HANDLING_PROMPT
     )
 }
 
@@ -80,11 +77,7 @@ pub fn get_efficiency_prompts() -> &'static str {
 
 /// Get full system prompt with all guidelines
 pub fn get_complete_system_prompt() -> String {
-    format!(
-        "{}\n\n{}",
-        CORE_IDENTITY,
-        EFFICIENCY_PROMPT
-    )
+    format!("{}\n\n{}", CORE_IDENTITY, EFFICIENCY_PROMPT)
 }
 
 #[cfg(test)]
@@ -101,9 +94,9 @@ mod tests {
     fn test_safety_prompts() {
         let safety = get_safety_prompts();
         assert!(safety.contains("FILE SAFETY"));
-        assert!(safety.contains("GIT:"));  // GIT_SAFETY_PROMPT uses "GIT:" not "GIT SAFETY"
-        assert!(safety.contains("SHELL:"));  // SHELL_SAFETY_PROMPT uses "SHELL:" not "SHELL SAFETY"
-        assert!(safety.contains("ERRORS:"));  // ERROR_HANDLING_PROMPT uses "ERRORS:"
+        assert!(safety.contains("GIT:")); // GIT_SAFETY_PROMPT uses "GIT:" not "GIT SAFETY"
+        assert!(safety.contains("SHELL:")); // SHELL_SAFETY_PROMPT uses "SHELL:" not "SHELL SAFETY"
+        assert!(safety.contains("ERRORS:")); // ERROR_HANDLING_PROMPT uses "ERRORS:"
     }
 
     #[test]

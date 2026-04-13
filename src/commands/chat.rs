@@ -1,17 +1,17 @@
 //! Chat command implementation
 
+use crate::config::Settings;
+use crate::prompts::{get_full_prompt, Mode};
+use crate::providers::anthropic::AnthropicProvider;
+use crate::providers::llama_cpp::LlamaCppProvider;
+use crate::providers::lm_studio::LmStudioProvider;
+use crate::providers::ollama::OllamaProvider;
+use crate::providers::openai::OpenAIProvider;
+use crate::providers::{Message, Provider, Role};
+use crate::supervisor::ModelSupervisor;
 use color_eyre::eyre::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::config::Settings;
-use crate::providers::{Provider, Message, Role};
-use crate::providers::anthropic::AnthropicProvider;
-use crate::providers::openai::OpenAIProvider;
-use crate::providers::ollama::OllamaProvider;
-use crate::providers::llama_cpp::LlamaCppProvider;
-use crate::providers::lm_studio::LmStudioProvider;
-use crate::supervisor::ModelSupervisor;
-use crate::prompts::{Mode, get_full_prompt};
 
 /// Run chat mode (one-shot or interactive)
 pub async fn run(prompt: Option<String>, model: Option<String>, mode: Mode) -> Result<()> {
@@ -153,7 +153,10 @@ async fn run_one_shot(prompt: &str, model: Option<String>, mode: Mode) -> Result
     };
 
     // Send request with system prompt
-    match provider.send_with_system(vec![user_message.clone()], Some(&system_prompt)).await {
+    match provider
+        .send_with_system(vec![user_message.clone()], Some(&system_prompt))
+        .await
+    {
         Ok(response) => {
             println!("AI Response:");
             println!("{}", response);

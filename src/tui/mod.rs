@@ -3,8 +3,8 @@
 //! Provides the interactive TUI for Quantumn Code
 
 pub mod app;
-pub mod render;
 pub mod event;
+pub mod render;
 
 pub use render::TuiApp;
 
@@ -76,13 +76,12 @@ fn run_tui(mut app: crate::app::App) -> Result<()> {
 }
 
 /// Run the main application loop
-fn run_app<B: Backend>(
-    terminal: &mut Terminal<B>,
-    app: &mut crate::app::App,
-) -> Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut crate::app::App) -> Result<()> {
     loop {
         // Draw frame
-        terminal.draw(|frame| render::render(frame, app)).map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
+        terminal
+            .draw(|frame| render::render(frame, app))
+            .map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
 
         // Handle events
         if event::handle_events(app)? {

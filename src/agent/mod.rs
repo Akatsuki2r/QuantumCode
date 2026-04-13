@@ -3,13 +3,13 @@
 //! Ultra-simple tool system that adapts to the AI's needs.
 //! Just the essentials: read, write, bash, grep, glob.
 
-mod tools;
 mod executor;
 mod parser;
+mod tools;
 
-pub use tools::{Tool, ToolCall, ToolResult};
-pub use executor::{AgentExecutor, run_agentic};
+pub use executor::{run_agentic, AgentExecutor};
 pub use parser::parse_tool_calls;
+pub use tools::{Tool, ToolCall, ToolResult};
 
 /// System prompt for agentic mode
 pub const AGENT_SYSTEM_PROMPT: &str = r#"

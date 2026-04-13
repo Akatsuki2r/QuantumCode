@@ -1,7 +1,7 @@
 //! Event handling for the TUI
 
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::Duration;
-use crossterm::event::{Event, KeyCode, KeyModifiers, KeyEventKind};
 
 use crate::app::{App, Mode};
 use color_eyre::eyre::Result;
@@ -296,7 +296,10 @@ To switch: /theme <theme_name>";
             match arg {
                 Some("list") | Some("ls") | Some("l") => {
                     // List sessions (TODO: implement proper session listing)
-                    app.add_message("system", "Sessions: 0 saved\n\nUse /session save <name> to save current session");
+                    app.add_message(
+                        "system",
+                        "Sessions: 0 saved\n\nUse /session save <name> to save current session",
+                    );
                 }
                 Some("save") | Some("s") => {
                     let name = parts.get(2).unwrap_or(&"unnamed");
@@ -315,7 +318,10 @@ To switch: /theme <theme_name>";
                     app.add_message("system", "Session commands:\n  /session list   - List saved sessions\n  /session save <name> - Save current session\n  /session load <name> - Load session\n  /session delete <name> - Delete session");
                 }
                 _ => {
-                    app.add_message("system", "Unknown session command. Use: list, save, load, delete");
+                    app.add_message(
+                        "system",
+                        "Unknown session command. Use: list, save, load, delete",
+                    );
                 }
             }
         }
@@ -370,10 +376,16 @@ Config file: ~/.config/quantumn-code/config.toml",
             if let Some(mode_name) = arg {
                 match mode_name {
                     "plan" => {
-                        app.add_message("system", "Switched to PLAN mode - AI will plan before implementing");
+                        app.add_message(
+                            "system",
+                            "Switched to PLAN mode - AI will plan before implementing",
+                        );
                     }
                     "build" => {
-                        app.add_message("system", "Switched to BUILD mode - AI will implement directly");
+                        app.add_message(
+                            "system",
+                            "Switched to BUILD mode - AI will implement directly",
+                        );
                     }
                     "chat" => {
                         app.add_message("system", "Switched to CHAT mode - Casual conversation");
@@ -387,7 +399,13 @@ Config file: ~/.config/quantumn-code/config.toml",
             }
         }
         _ => {
-            app.add_message("system", &format!("Unknown command: {}. Type /help for available commands.", command));
+            app.add_message(
+                "system",
+                &format!(
+                    "Unknown command: {}. Type /help for available commands.",
+                    command
+                ),
+            );
         }
     }
 

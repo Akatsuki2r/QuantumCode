@@ -1,7 +1,7 @@
 //! Shell command execution tool
 
-use std::process::{Command, Output};
 use color_eyre::eyre::Result;
+use std::process::{Command, Output};
 
 /// Run a shell command
 pub fn run_command(cmd: &str, args: &[&str]) -> Result<Output> {

@@ -3,9 +3,9 @@
 use color_eyre::eyre::Result;
 use futures::StreamExt;
 
-use crate::providers::{Provider, Message, Role, StreamChunk};
 use super::tools::{execute_tool, ToolCall, ToolResult};
 use super::AGENT_SYSTEM_PROMPT;
+use crate::providers::{Message, Provider, Role, StreamChunk};
 
 /// Max iterations to prevent infinite loops
 const MAX_ITERATIONS: usize = 50;
@@ -44,7 +44,10 @@ impl AgentExecutor {
             self.iteration += 1;
 
             if self.iteration > MAX_ITERATIONS {
-                return Ok("Error: Max iterations exceeded. The AI may be in an infinite loop.".to_string());
+                return Ok(
+                    "Error: Max iterations exceeded. The AI may be in an infinite loop."
+                        .to_string(),
+                );
             }
 
             // Get response from AI
@@ -96,7 +99,10 @@ impl AgentExecutor {
     }
 
     /// Get response from AI
-    async fn get_ai_response(&self, provider: &dyn Provider) -> std::result::Result<String, crate::providers::ProviderError> {
+    async fn get_ai_response(
+        &self,
+        provider: &dyn Provider,
+    ) -> std::result::Result<String, crate::providers::ProviderError> {
         // Use streaming for better UX but collect full response
         let stream = provider.send_stream(self.messages.clone()).await;
 
@@ -136,10 +142,7 @@ impl AgentExecutor {
 }
 
 /// Simple one-shot agentic request
-pub async fn run_agentic(
-    prompt: &str,
-    provider: &dyn Provider,
-) -> Result<String> {
+pub async fn run_agentic(prompt: &str, provider: &dyn Provider) -> Result<String> {
     let mut executor = AgentExecutor::new(prompt);
     executor.run(provider).await
 }

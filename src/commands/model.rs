@@ -28,7 +28,12 @@ fn scan_lm_studio_models() -> Vec<(String, PathBuf)> {
                 if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                     if let Ok(sub) = std::fs::read_dir(entry.path()) {
                         for sub_entry in sub.flatten() {
-                            if sub_entry.path().extension().map(|e| e == "gguf").unwrap_or(false) {
+                            if sub_entry
+                                .path()
+                                .extension()
+                                .map(|e| e == "gguf")
+                                .unwrap_or(false)
+                            {
                                 let name = sub_entry.file_name().to_string_lossy().to_string();
                                 models.push((name, sub_entry.path()));
                             }
@@ -67,7 +72,8 @@ fn list_models(provider: Option<String>) -> Result<()> {
                 for (name, path) in &local_models {
                     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
                     let size_mb = size as f64 / (1024.0 * 1024.0);
-                    let display_name = path.file_stem()
+                    let display_name = path
+                        .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_else(|| name.clone());
                     println!("║   {} ({:.1} MB)", display_name, size_mb);
@@ -212,7 +218,10 @@ fn show_current_provider() -> Result<()> {
         println!("llama.cpp configuration:");
         println!("  Enabled: {}", settings.llama_cpp.enabled);
         println!("  Port: {}", settings.llama_cpp.default_port);
-        println!("  Fallback to Ollama: {}", settings.llama_cpp.fallback_to_ollama);
+        println!(
+            "  Fallback to Ollama: {}",
+            settings.llama_cpp.fallback_to_ollama
+        );
         println!("  Auto-start: {}", settings.llama_cpp.auto_start);
         if !settings.llama_cpp.model_paths.is_empty() {
             println!("  Model paths:");

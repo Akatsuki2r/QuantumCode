@@ -2,10 +2,10 @@
 //!
 //! Generates shell completions for bash, zsh, fish, and other shells.
 
-use clap_complete::{Shell, generate};
-use clap::CommandFactory;
-use color_eyre::eyre::Result;
 use crate::Cli;
+use clap::CommandFactory;
+use clap_complete::{generate, Shell};
+use color_eyre::eyre::Result;
 
 /// Run completion generation
 pub async fn run(shell: Option<String>) -> Result<()> {
@@ -19,7 +19,10 @@ pub async fn run(shell: Option<String>) -> Result<()> {
                 "powershell" => generate_shell(Shell::PowerShell),
                 "elvish" => generate_shell(Shell::Elvish),
                 _ => {
-                    eprintln!("Unknown shell: {}. Use: bash, zsh, fish, powershell, elvish", s);
+                    eprintln!(
+                        "Unknown shell: {}. Use: bash, zsh, fish, powershell, elvish",
+                        s
+                    );
                     eprintln!("\nTo install completions:");
                     eprintln!("  Bash:  quantumn completions bash >> ~/.bashrc");
                     eprintln!("  Zsh:   quantumn completions zsh > ~/.zsh/completions/_quantumn");

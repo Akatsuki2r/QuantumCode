@@ -29,7 +29,8 @@ fn list_themes() -> Result<()> {
     println!();
 
     // Check for custom themes
-    let custom: Vec<String> = themes.iter()
+    let custom: Vec<String> = themes
+        .iter()
         .filter(|t| !["default", "tokyo_night", "hacker", "deep_black"].contains(&t.as_str()))
         .cloned()
         .collect();

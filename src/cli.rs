@@ -1,8 +1,8 @@
 //! CLI argument parsing using clap
 
 use clap::{Parser, Subcommand};
+use clap_complete::{generate, Shell};
 use std::path::PathBuf;
-use clap_complete::{Shell, generate};
 
 /// Quantumn Code - An advanced AI-powered coding assistant CLI
 #[derive(Parser, Debug)]

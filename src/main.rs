@@ -14,16 +14,16 @@ use clap::Parser;
 use color_eyre::eyre::Result;
 
 mod agent;
-mod cli;
 mod app;
+mod cli;
+mod commands;
 mod config;
+mod prompts;
 mod providers;
 mod supervisor;
-mod commands;
-mod tui;
 mod tools;
+mod tui;
 mod utils;
-mod prompts;
 
 use cli::{Cli, Commands};
 use prompts::Mode as PromptMode;
@@ -40,33 +40,31 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into())
+                .add_directive(tracing::Level::INFO.into()),
         )
         .init();
 
     // Run the CLI
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async {
-        run(cli).await
-    })
+    rt.block_on(async { run(cli).await })
 }
 
 /// Main async runner
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         // Start interactive session
-        None => {
-            tui::run_interactive(cli.model, cli.theme).await
-        }
+        None => tui::run_interactive(cli.model, cli.theme).await,
 
         // One-shot query mode
         Some(Commands::Chat { prompt, model }) => {
             commands::chat::run(prompt, model.or(cli.model), PromptMode::Chat).await
         }
 
-        Some(Commands::Edit { file, prompt, model }) => {
-            commands::edit::run(file, prompt, model.or(cli.model)).await
-        }
+        Some(Commands::Edit {
+            file,
+            prompt,
+            model,
+        }) => commands::edit::run(file, prompt, model.or(cli.model)).await,
 
         Some(Commands::Review { files, model }) => {
             commands::review::run(files, model.or(cli.model)).await
@@ -76,42 +74,26 @@ async fn run(cli: Cli) -> Result<()> {
             commands::test::run(path, model.or(cli.model)).await
         }
 
-        Some(Commands::Session { command }) => {
-            commands::session::run(command).await
-        }
+        Some(Commands::Session { command }) => commands::session::run(command).await,
 
-        Some(Commands::Config { command }) => {
-            commands::config::run(command).await
-        }
+        Some(Commands::Config { command }) => commands::config::run(command).await,
 
-        Some(Commands::Theme { command }) => {
-            commands::theme::run(command).await
-        }
+        Some(Commands::Theme { command }) => commands::theme::run(command).await,
 
-        Some(Commands::Model { provider, list }) => {
-            commands::model::run(provider, list).await
-        }
+        Some(Commands::Model { provider, list }) => commands::model::run(provider, list).await,
 
-        Some(Commands::Provider { list }) => {
-            commands::model::run_provider(list).await
-        }
+        Some(Commands::Provider { list }) => commands::model::run_provider(list).await,
 
-        Some(Commands::Status) => {
-            commands::status::run().await
-        }
+        Some(Commands::Status) => commands::status::run().await,
 
         Some(Commands::Version) => {
             println!("Quantumn Code v{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
 
-        Some(Commands::Docs { section }) => {
-            commands::help::run(section).await
-        }
+        Some(Commands::Docs { section }) => commands::help::run(section).await,
 
-        Some(Commands::Completions { shell }) => {
-            commands::completions::run(shell).await
-        }
+        Some(Commands::Completions { shell }) => commands::completions::run(shell).await,
 
         Some(Commands::Agent { task, model }) => {
             commands::agent::run(task, model.or(cli.model)).await

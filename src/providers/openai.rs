@@ -2,10 +2,10 @@
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use std::pin::Pin;
 use std::env;
+use std::pin::Pin;
 
-use super::provider_trait::{Provider, ProviderError, Message, Role, StreamChunk};
+use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 use color_eyre::eyre::Result;
 
 /// OpenAI API client
@@ -136,8 +136,9 @@ impl Provider for OpenAIProvider {
     }
 
     async fn send(&self, messages: Vec<Message>) -> Result<String, ProviderError> {
-        let api_key = self.api_key.as_ref()
-            .ok_or(ProviderError::AuthError("OPENAI_API_KEY not set".to_string()))?;
+        let api_key = self.api_key.as_ref().ok_or(ProviderError::AuthError(
+            "OPENAI_API_KEY not set".to_string(),
+        ))?;
 
         let request = OpenAIRequest {
             model: self.model.clone(),
@@ -146,7 +147,8 @@ impl Provider for OpenAIProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
@@ -165,7 +167,8 @@ impl Provider for OpenAIProvider {
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        let text = result.choices
+        let text = result
+            .choices
             .first()
             .and_then(|c| c.message.content.clone())
             .unwrap_or_default();
@@ -173,9 +176,14 @@ impl Provider for OpenAIProvider {
         Ok(text)
     }
 
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
-        let api_key = self.api_key.as_ref()
-            .ok_or(ProviderError::AuthError("OPENAI_API_KEY not set".to_string()))?;
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError> {
+        let api_key = self.api_key.as_ref().ok_or(ProviderError::AuthError(
+            "OPENAI_API_KEY not set".to_string(),
+        ))?;
 
         // Prepend system message if provided
         let mut all_messages = Vec::new();
@@ -194,7 +202,8 @@ impl Provider for OpenAIProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
@@ -213,7 +222,8 @@ impl Provider for OpenAIProvider {
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        let text = result.choices
+        let text = result
+            .choices
             .first()
             .and_then(|c| c.message.content.clone())
             .unwrap_or_default();

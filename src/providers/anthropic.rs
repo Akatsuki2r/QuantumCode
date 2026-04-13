@@ -2,10 +2,10 @@
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use std::pin::Pin;
 use std::env;
+use std::pin::Pin;
 
-use super::provider_trait::{Provider, ProviderError, Message, Role, StreamChunk};
+use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 use color_eyre::eyre::Result;
 
 /// Anthropic API client
@@ -125,8 +125,9 @@ impl Provider for AnthropicProvider {
     }
 
     async fn send(&self, messages: Vec<Message>) -> Result<String, ProviderError> {
-        let api_key = self.api_key.as_ref()
-            .ok_or(ProviderError::AuthError("ANTHROPIC_API_KEY not set".to_string()))?;
+        let api_key = self.api_key.as_ref().ok_or(ProviderError::AuthError(
+            "ANTHROPIC_API_KEY not set".to_string(),
+        ))?;
 
         let request = AnthropicRequest {
             model: self.model.clone(),
@@ -136,7 +137,8 @@ impl Provider for AnthropicProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(self.endpoint())
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
@@ -156,7 +158,8 @@ impl Provider for AnthropicProvider {
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        let text = result.content
+        let text = result
+            .content
             .first()
             .map(|c| c.text.clone())
             .unwrap_or_default();
@@ -164,9 +167,14 @@ impl Provider for AnthropicProvider {
         Ok(text)
     }
 
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
-        let api_key = self.api_key.as_ref()
-            .ok_or(ProviderError::AuthError("ANTHROPIC_API_KEY not set".to_string()))?;
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError> {
+        let api_key = self.api_key.as_ref().ok_or(ProviderError::AuthError(
+            "ANTHROPIC_API_KEY not set".to_string(),
+        ))?;
 
         let request = AnthropicRequest {
             model: self.model.clone(),
@@ -176,7 +184,8 @@ impl Provider for AnthropicProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(self.endpoint())
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
@@ -196,7 +205,8 @@ impl Provider for AnthropicProvider {
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        let text = result.content
+        let text = result
+            .content
             .first()
             .map(|c| c.text.clone())
             .unwrap_or_default();

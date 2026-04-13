@@ -323,21 +323,66 @@ pub struct ThemeInfo {
 /// Get keyboard shortcuts
 pub fn get_shortcuts() -> Vec<ShortcutInfo> {
     vec![
-        ShortcutInfo { key: "Ctrl+S", action: "Save current session" },
-        ShortcutInfo { key: "Ctrl+L", action: "Load saved session" },
-        ShortcutInfo { key: "Ctrl+T", action: "Cycle through themes" },
-        ShortcutInfo { key: "Ctrl+P", action: "Switch AI provider" },
-        ShortcutInfo { key: "Ctrl+M", action: "Switch AI model" },
-        ShortcutInfo { key: "Ctrl+Q", action: "Quit application" },
-        ShortcutInfo { key: "Tab", action: "Switch between panes" },
-        ShortcutInfo { key: "Shift+Tab", action: "Switch panes (reverse)" },
-        ShortcutInfo { key: "Enter", action: "Send message" },
-        ShortcutInfo { key: "Esc", action: "Cancel/exit" },
-        ShortcutInfo { key: "Up/Down", action: "Navigate history" },
-        ShortcutInfo { key: "Ctrl+C", action: "Cancel current operation" },
-        ShortcutInfo { key: "Ctrl+R", action: "Clear screen" },
-        ShortcutInfo { key: "Ctrl+H", action: "Show help" },
-        ShortcutInfo { key: "/", action: "Enter command mode (prefix commands with /)" },
+        ShortcutInfo {
+            key: "Ctrl+S",
+            action: "Save current session",
+        },
+        ShortcutInfo {
+            key: "Ctrl+L",
+            action: "Load saved session",
+        },
+        ShortcutInfo {
+            key: "Ctrl+T",
+            action: "Cycle through themes",
+        },
+        ShortcutInfo {
+            key: "Ctrl+P",
+            action: "Switch AI provider",
+        },
+        ShortcutInfo {
+            key: "Ctrl+M",
+            action: "Switch AI model",
+        },
+        ShortcutInfo {
+            key: "Ctrl+Q",
+            action: "Quit application",
+        },
+        ShortcutInfo {
+            key: "Tab",
+            action: "Switch between panes",
+        },
+        ShortcutInfo {
+            key: "Shift+Tab",
+            action: "Switch panes (reverse)",
+        },
+        ShortcutInfo {
+            key: "Enter",
+            action: "Send message",
+        },
+        ShortcutInfo {
+            key: "Esc",
+            action: "Cancel/exit",
+        },
+        ShortcutInfo {
+            key: "Up/Down",
+            action: "Navigate history",
+        },
+        ShortcutInfo {
+            key: "Ctrl+C",
+            action: "Cancel current operation",
+        },
+        ShortcutInfo {
+            key: "Ctrl+R",
+            action: "Clear screen",
+        },
+        ShortcutInfo {
+            key: "Ctrl+H",
+            action: "Show help",
+        },
+        ShortcutInfo {
+            key: "/",
+            action: "Enter command mode (prefix commands with /)",
+        },
     ]
 }
 
@@ -350,18 +395,66 @@ pub struct ShortcutInfo {
 /// Command mode commands (prefixed with /)
 pub fn get_slash_commands() -> Vec<SlashCommandInfo> {
     vec![
-        SlashCommandInfo { command: "/help", description: "Show this help message", autocomplete: true },
-        SlashCommandInfo { command: "/clear", description: "Clear the chat history", autocomplete: true },
-        SlashCommandInfo { command: "/mode", description: "Switch mode: plan | build | chat", autocomplete: true },
-        SlashCommandInfo { command: "/model", description: "Switch AI model (show all if no arg)", autocomplete: true },
-        SlashCommandInfo { command: "/provider", description: "Switch AI provider", autocomplete: true },
-        SlashCommandInfo { command: "/theme", description: "Switch theme", autocomplete: true },
-        SlashCommandInfo { command: "/session", description: "Manage sessions: save | load | list", autocomplete: true },
-        SlashCommandInfo { command: "/config", description: "View or edit configuration", autocomplete: true },
-        SlashCommandInfo { command: "/status", description: "Show current status", autocomplete: true },
-        SlashCommandInfo { command: "/version", description: "Show version", autocomplete: true },
-        SlashCommandInfo { command: "/exit", description: "Exit Quantumn Code", autocomplete: true },
-        SlashCommandInfo { command: "/quit", description: "Exit Quantumn Code (alias for /exit)", autocomplete: true },
+        SlashCommandInfo {
+            command: "/help",
+            description: "Show this help message",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/clear",
+            description: "Clear the chat history",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/mode",
+            description: "Switch mode: plan | build | chat",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/model",
+            description: "Switch AI model (show all if no arg)",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/provider",
+            description: "Switch AI provider",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/theme",
+            description: "Switch theme",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/session",
+            description: "Manage sessions: save | load | list",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/config",
+            description: "View or edit configuration",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/status",
+            description: "Show current status",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/version",
+            description: "Show version",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/exit",
+            description: "Exit Quantumn Code",
+            autocomplete: true,
+        },
+        SlashCommandInfo {
+            command: "/quit",
+            description: "Exit Quantumn Code (alias for /exit)",
+            autocomplete: true,
+        },
     ]
 }
 
@@ -384,13 +477,15 @@ pub async fn run(section: Option<String>) -> Result<()> {
         None => print_full_help(),
         _ => {
             eprintln!("{}Unknown help section: {}{}", RED, section.unwrap(), RESET);
-            println!("Available sections: {}, {}, {}, {}, {}, {}",
+            println!(
+                "Available sections: {}, {}, {}, {}, {}, {}",
                 format!("{}commands{}", CYAN, RESET),
                 format!("{}providers{}", CYAN, RESET),
                 format!("{}themes{}", CYAN, RESET),
                 format!("{}shortcuts{}", CYAN, RESET),
                 format!("{}slash{}", CYAN, RESET),
-                format!("{}quick{}", CYAN, RESET));
+                format!("{}quick{}", CYAN, RESET)
+            );
         }
     }
     Ok(())
@@ -415,20 +510,38 @@ fn print_banner() {
     println!("{}  |  _ \\| | | | \\ | | \\ | |   \\|_  / {}", CYAN, RESET);
     println!("{}  | |_) | |_| |  \\| |  \\| | |) |/ /  {}", YELLOW, RESET);
     println!("{}  |  _ <|  _  | |\\  | |\\  |   // /   {}", BLUE, RESET);
-    println!("{}  |_| \\_\\_| |_|_| \\_|_| \\_|__/___|   {}", GREEN, RESET);
+    println!(
+        "{}  |_| \\_\\_| |_|_| \\_|_| \\_|__/___|   {}",
+        GREEN, RESET
+    );
     println!();
-    println!("{}  {}An advanced AI-powered coding assistant CLI{}", BOLD, YELLOW, RESET);
-    println!("{}  Built in Rust for performance and reliability{}", CYAN, RESET);
+    println!(
+        "{}  {}An advanced AI-powered coding assistant CLI{}",
+        BOLD, YELLOW, RESET
+    );
+    println!(
+        "{}  Built in Rust for performance and reliability{}",
+        CYAN, RESET
+    );
     println!();
 }
 
 /// Print footer
 fn print_footer() {
     println!();
-    println!("{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}", CYAN, RESET);
+    println!(
+        "{}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{}",
+        CYAN, RESET
+    );
     println!();
-    println!("{}  Documentation:{} https://github.com/Akatsuki2r/QuantumCode", GREEN, RESET);
-    println!("{}  Issues:{}        https://github.com/Akatsuki2r/QuantumCode/issues", RED, RESET);
+    println!(
+        "{}  Documentation:{} https://github.com/Akatsuki2r/QuantumCode",
+        GREEN, RESET
+    );
+    println!(
+        "{}  Issues:{}        https://github.com/Akatsuki2r/QuantumCode/issues",
+        RED, RESET
+    );
     println!();
     println!("{}  Made with Rust by NahanoMark{}", YELLOW, RESET);
     println!();
@@ -436,9 +549,18 @@ fn print_footer() {
 
 /// Print quick start guide
 fn print_quick_start() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}QUICK START{}                                                   │{}", CYAN, YELLOW, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}QUICK START{}                                                   │{}",
+        CYAN, YELLOW, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
     println!("  {}1. Install:{} {}", CYAN, RESET, RESET);
     println!("     cargo install quantumn");
@@ -446,53 +568,115 @@ fn print_quick_start() {
     println!("     npm install -g @quantumn/code");
     println!();
     println!("  {}2. Set up your AI provider:{} {}", CYAN, RESET, RESET);
-    println!("     export ANTHROPIC_API_KEY=your_key_here   {}# For Claude{}", CYAN, RESET);
+    println!(
+        "     export ANTHROPIC_API_KEY=your_key_here   {}# For Claude{}",
+        CYAN, RESET
+    );
     println!("     {}# or{}", CYAN, RESET);
-    println!("     export OPENAI_API_KEY=your_key_here        {}# For OpenAI{}", CYAN, RESET);
-    println!("     {}# or use local models with Ollama:{} {}", CYAN, RESET, RESET);
+    println!(
+        "     export OPENAI_API_KEY=your_key_here        {}# For OpenAI{}",
+        CYAN, RESET
+    );
+    println!(
+        "     {}# or use local models with Ollama:{} {}",
+        CYAN, RESET, RESET
+    );
     println!("     ollama serve && ollama pull llama3.2");
     println!();
     println!("  {}3. Start chatting:{} {}", CYAN, RESET, RESET);
-    println!("     quantumn                                 {}# Interactive mode{}", CYAN, RESET);
-    println!("     quantumn chat \"Explain this code\"        {}# One-shot query{}", CYAN, RESET);
+    println!(
+        "     quantumn                                 {}# Interactive mode{}",
+        CYAN, RESET
+    );
+    println!(
+        "     quantumn chat \"Explain this code\"        {}# One-shot query{}",
+        CYAN, RESET
+    );
     println!();
     println!("  {}4. Useful commands:{} {}", CYAN, RESET, RESET);
-    println!("     quantumn edit src/main.rs                 {}# Edit file with AI{}", CYAN, RESET);
-    println!("     quantumn agent \"Refactor this\"          {}# Agentic mode{}", CYAN, RESET);
-    println!("     quantumn review src/lib.rs                {}# Code review{}", CYAN, RESET);
+    println!(
+        "     quantumn edit src/main.rs                 {}# Edit file with AI{}",
+        CYAN, RESET
+    );
+    println!(
+        "     quantumn agent \"Refactor this\"          {}# Agentic mode{}",
+        CYAN, RESET
+    );
+    println!(
+        "     quantumn review src/lib.rs                {}# Code review{}",
+        CYAN, RESET
+    );
     println!();
 }
 
 /// Print commands section
 fn print_commands() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}COMMANDS{}                                                      │{}", CYAN, GREEN, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}COMMANDS{}                                                      │{}",
+        CYAN, GREEN, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
 
     let commands = get_commands();
     let max_name_len = commands.iter().map(|c| c.name.len()).max().unwrap_or(12);
 
     for cmd in &commands {
-        println!("  {}{:width$}{}  {}", CYAN, cmd.name, RESET, cmd.short_desc, width = max_name_len);
+        println!(
+            "  {}{:width$}{}  {}",
+            CYAN,
+            cmd.name,
+            RESET,
+            cmd.short_desc,
+            width = max_name_len
+        );
         if !cmd.aliases.is_empty() {
-            println!("  {:width$}  {}Aliases: {}{}", "", CYAN, cmd.aliases.join(", "), RESET, width = max_name_len);
+            println!(
+                "  {:width$}  {}Aliases: {}{}",
+                "",
+                CYAN,
+                cmd.aliases.join(", "),
+                RESET,
+                width = max_name_len
+            );
         }
     }
 
     println!();
-    println!("  {}Use 'quantumn <command> --help' for detailed usage{}", YELLOW, RESET);
+    println!(
+        "  {}Use 'quantumn <command> --help' for detailed usage{}",
+        YELLOW, RESET
+    );
 }
 
 /// Print providers section
 fn print_providers() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}AI PROVIDERS{}                                                  │{}", CYAN, MAGENTA, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}AI PROVIDERS{}                                                  │{}",
+        CYAN, MAGENTA, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
 
     for provider in get_providers() {
-        println!("  {}{} ({}){}", BOLD, provider.display_name, provider.name, RESET);
+        println!(
+            "  {}{} ({}){}",
+            BOLD, provider.display_name, provider.name, RESET
+        );
         println!("  {}", provider.description);
         println!("  {}Models:{}", GREEN, RESET);
         for model in provider.models {
@@ -506,14 +690,30 @@ fn print_providers() {
 
 /// Print themes section
 fn print_themes() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}THEMES{}                                                        │{}", CYAN, BLUE, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}THEMES{}                                                        │{}",
+        CYAN, BLUE, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
 
     for theme in get_themes() {
-        let default_marker = if theme.name == "oxidized" { format!(" {}[default]{}", GREEN, RESET) } else { String::new() };
-        println!("  {}{}{}{} - {}", CYAN, theme.name, default_marker, RESET, theme.description);
+        let default_marker = if theme.name == "oxidized" {
+            format!(" {}[default]{}", GREEN, RESET)
+        } else {
+            String::new()
+        };
+        println!(
+            "  {}{}{}{} - {}",
+            CYAN, theme.name, default_marker, RESET, theme.description
+        );
     }
 
     println!();
@@ -523,36 +723,74 @@ fn print_themes() {
 
 /// Print shortcuts section
 fn print_shortcuts() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}KEYBOARD SHORTCUTS{}                                            │{}", CYAN, YELLOW, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}KEYBOARD SHORTCUTS{}                                            │{}",
+        CYAN, YELLOW, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
 
     let shortcuts = get_shortcuts();
     let max_key_len = shortcuts.iter().map(|s| s.key.len()).max().unwrap_or(10);
 
     for shortcut in &shortcuts {
-        println!("  {}{:width$}{}  {}", CYAN, shortcut.key, RESET, shortcut.action, width = max_key_len);
+        println!(
+            "  {}{:width$}{}  {}",
+            CYAN,
+            shortcut.key,
+            RESET,
+            shortcut.action,
+            width = max_key_len
+        );
     }
 }
 
 /// Print slash commands section
 fn print_slash_commands() {
-    println!("{}┌─────────────────────────────────────────────────────────────────┐{}", CYAN, RESET);
-    println!("{}│  {}SLASH COMMANDS (in interactive mode){}                         │{}", CYAN, MAGENTA, CYAN, RESET);
-    println!("{}└─────────────────────────────────────────────────────────────────┘{}", CYAN, RESET);
+    println!(
+        "{}┌─────────────────────────────────────────────────────────────────┐{}",
+        CYAN, RESET
+    );
+    println!(
+        "{}│  {}SLASH COMMANDS (in interactive mode){}                         │{}",
+        CYAN, MAGENTA, CYAN, RESET
+    );
+    println!(
+        "{}└─────────────────────────────────────────────────────────────────┘{}",
+        CYAN, RESET
+    );
     println!();
 
     let commands = get_slash_commands();
     let max_cmd_len = commands.iter().map(|c| c.command.len()).max().unwrap_or(10);
 
     for cmd in &commands {
-        println!("  {}{:width$}{}  {}", CYAN, cmd.command, RESET, cmd.description, width = max_cmd_len);
+        println!(
+            "  {}{:width$}{}  {}",
+            CYAN,
+            cmd.command,
+            RESET,
+            cmd.description,
+            width = max_cmd_len
+        );
     }
 
     println!();
-    println!("  {}Type / followed by command in interactive mode{}", YELLOW, RESET);
-    println!("  {}Tab completion is available for all slash commands{}", CYAN, RESET);
+    println!(
+        "  {}Type / followed by command in interactive mode{}",
+        YELLOW, RESET
+    );
+    println!(
+        "  {}Tab completion is available for all slash commands{}",
+        CYAN, RESET
+    );
 }
 
 #[cfg(test)]

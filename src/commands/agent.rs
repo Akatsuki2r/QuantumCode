@@ -2,8 +2,8 @@
 
 use color_eyre::eyre::Result;
 
-use crate::config::Settings;
 use crate::commands::chat::get_provider;
+use crate::config::Settings;
 
 /// Run an agentic task
 pub async fn run(task: String, model: Option<String>) -> Result<()> {

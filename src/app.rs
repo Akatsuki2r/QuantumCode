@@ -1,7 +1,7 @@
 //! Application state management
 
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 use crate::config::settings::Settings;
 use crate::config::themes::Theme;
@@ -187,11 +187,7 @@ impl App {
 
     /// Get total tokens used in session
     pub fn total_tokens(&self) -> usize {
-        self.session
-            .messages
-            .iter()
-            .filter_map(|m| m.tokens)
-            .sum()
+        self.session.messages.iter().filter_map(|m| m.tokens).sum()
     }
 
     /// Estimate tokens for a string (rough approximation)

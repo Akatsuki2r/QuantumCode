@@ -1,8 +1,8 @@
 //! Minimalistic tools for agentic workflow
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Output;
-use serde::{Deserialize, Serialize};
 
 /// A tool that the AI can call
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,10 +80,7 @@ pub fn tool_write(arg: &str, content: &str) -> ToolResult {
 /// Execute a Bash tool
 pub fn tool_bash(arg: &str) -> ToolResult {
     // Parse command - use sh -c for proper shell behavior
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(arg)
-        .output();
+    let output = std::process::Command::new("sh").arg("-c").arg(arg).output();
 
     match output {
         Ok(out) => {
@@ -91,7 +88,11 @@ pub fn tool_bash(arg: &str) -> ToolResult {
             let stderr = String::from_utf8_lossy(&out.stderr).to_string();
             if out.status.success() {
                 ToolResult {
-                    stdout: if stdout.is_empty() { "(no output)".to_string() } else { stdout },
+                    stdout: if stdout.is_empty() {
+                        "(no output)".to_string()
+                    } else {
+                        stdout
+                    },
                     stderr,
                     success: true,
                 }
@@ -120,7 +121,11 @@ pub fn tool_grep(arg: &str, path: &str) -> ToolResult {
             let stdout = String::from_utf8_lossy(&out.stdout).to_string();
             let stderr = String::from_utf8_lossy(&out.stderr).to_string();
             ToolResult {
-                stdout: if stdout.is_empty() { "(no matches)".to_string() } else { stdout },
+                stdout: if stdout.is_empty() {
+                    "(no matches)".to_string()
+                } else {
+                    stdout
+                },
                 stderr,
                 success: out.status.success(),
             }
@@ -135,13 +140,17 @@ pub fn tool_glob(arg: &str) -> ToolResult {
 
     // Use find with glob pattern
     let output = std::process::Command::new("find")
-        .args(["." , "-name", pattern, "-type", "f"])
+        .args([".", "-name", pattern, "-type", "f"])
         .output();
 
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-            ToolResult::success(if stdout.is_empty() { "(no matches)".to_string() } else { stdout })
+            ToolResult::success(if stdout.is_empty() {
+                "(no matches)".to_string()
+            } else {
+                stdout
+            })
         }
         Err(e) => ToolResult::error(format!("Glob failed: {}", e)),
     }
@@ -168,7 +177,8 @@ pub fn get_tools() -> Vec<Tool> {
         },
         Tool {
             name: "Write".to_string(),
-            description: "Write content to file. Arg: file path, Content: content to write".to_string(),
+            description: "Write content to file. Arg: file path, Content: content to write"
+                .to_string(),
         },
         Tool {
             name: "Bash".to_string(),
@@ -176,7 +186,8 @@ pub fn get_tools() -> Vec<Tool> {
         },
         Tool {
             name: "Grep".to_string(),
-            description: "Search file contents. Arg: pattern, Path: directory to search".to_string(),
+            description: "Search file contents. Arg: pattern, Path: directory to search"
+                .to_string(),
         },
         Tool {
             name: "Glob".to_string(),

@@ -1,7 +1,7 @@
 //! Edit command implementation
 
-use std::path::PathBuf;
 use color_eyre::eyre::Result;
+use std::path::PathBuf;
 
 /// Edit a file with AI assistance
 pub async fn run(file: PathBuf, prompt: Option<String>, model: Option<String>) -> Result<()> {
@@ -26,7 +26,10 @@ pub async fn run(file: PathBuf, prompt: Option<String>, model: Option<String>) -
     let content = std::fs::read_to_string(&file)?;
     println!("Current content ({} bytes):", content.len());
     println!("{}", "-".repeat(40));
-    println!("{}", content.lines().take(20).collect::<Vec<_>>().join("\n"));
+    println!(
+        "{}",
+        content.lines().take(20).collect::<Vec<_>>().join("\n")
+    );
     if content.lines().count() > 20 {
         println!("... ({} more lines)", content.lines().count() - 20);
     }

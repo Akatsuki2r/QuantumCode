@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use super::provider_trait::{Provider, ProviderError, Message, Role, StreamChunk};
+use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 
 /// LM Studio provider mode
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,10 +118,10 @@ impl LmStudioProvider {
             client: reqwest::Client::new(),
             mode: LmStudioMode::Auto,
             turboquant_path: Some(PathBuf::from(
-                "/home/nahanomark/llama-cpp-turboquant/build/bin/llama-server"
+                "/home/nahanomark/llama-cpp-turboquant/build/bin/llama-server",
             )),
             lm_studio_models_dir: PathBuf::from(
-                std::env::var("HOME").unwrap_or_else(|_| "~".to_string()) + "/.lmstudio/models"
+                std::env::var("HOME").unwrap_or_else(|_| "~".to_string()) + "/.lmstudio/models",
             ),
             local_port: 8080,
             discovered_models: Arc::new(Mutex::new(Vec::new())),
@@ -200,7 +200,8 @@ impl LmStudioProvider {
                                         if ext == "gguf" {
                                             if let Some(file_name) = sub_entry.path().file_name() {
                                                 let name = file_name.to_string_lossy().to_string();
-                                                let model_id = sub_entry.path()
+                                                let model_id = sub_entry
+                                                    .path()
                                                     .file_stem()
                                                     .map(|s| s.to_string_lossy().to_string())
                                                     .unwrap_or_else(|| name.clone());
@@ -294,7 +295,9 @@ impl LmStudioProvider {
             *server = None;
         }
 
-        let turboquant = self.turboquant_path.as_ref()
+        let turboquant = self
+            .turboquant_path
+            .as_ref()
             .ok_or_else(|| ProviderError::ConfigError("Turboquant path not set".to_string()))?;
 
         let port_arg = format!("--port={}", self.local_port);
@@ -306,7 +309,9 @@ impl LmStudioProvider {
             .arg(&port_arg)
             .arg(ctx_arg)
             .spawn()
-            .map_err(|e| ProviderError::ConfigError(format!("Failed to start llama-server: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConfigError(format!("Failed to start llama-server: {}", e))
+            })?;
 
         *server = Some(child);
 
@@ -321,7 +326,9 @@ impl LmStudioProvider {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
-        Err(ProviderError::ConfigError("Local server failed to start".to_string()))
+        Err(ProviderError::ConfigError(
+            "Local server failed to start".to_string(),
+        ))
     }
 
     /// Stop local llama-server
@@ -408,7 +415,8 @@ impl Provider for LmStudioProvider {
                     context_length: None,
                 };
 
-                let response = self.build_request(&format!("{}/api/v1/chat", self.base_url))
+                let response = self
+                    .build_request(&format!("{}/api/v1/chat", self.base_url))
                     .json(&request)
                     .timeout(std::time::Duration::from_secs(120))
                     .send()
@@ -425,7 +433,9 @@ impl Provider for LmStudioProvider {
                     .await
                     .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-                Ok(result.choices.into_iter()
+                Ok(result
+                    .choices
+                    .into_iter()
                     .next()
                     .map(|c| c.message.content)
                     .unwrap_or_default())
@@ -433,9 +443,12 @@ impl Provider for LmStudioProvider {
             LmStudioMode::LocalLlamaCpp | LmStudioMode::Auto => {
                 // Find model path from discovered models
                 let discovered = self.scan_lm_studio_models().await?;
-                let model_path = discovered.iter()
-                    .find(|m| m.id.to_lowercase().contains(&self.model.to_lowercase()) ||
-                             m.name.to_lowercase().contains(&self.model.to_lowercase()))
+                let model_path = discovered
+                    .iter()
+                    .find(|m| {
+                        m.id.to_lowercase().contains(&self.model.to_lowercase())
+                            || m.name.to_lowercase().contains(&self.model.to_lowercase())
+                    })
                     .map(|m| m.path.clone())
                     .ok_or_else(|| ProviderError::ModelNotFound(self.model.clone()))?;
 
@@ -450,7 +463,8 @@ impl Provider for LmStudioProvider {
                     context_length: None,
                 };
 
-                let response = self.client
+                let response = self
+                    .client
                     .post(&format!("{}/completion", base_url))
                     .header("Content-Type", "application/json")
                     .json(&request)
@@ -479,7 +493,11 @@ impl Provider for LmStudioProvider {
         }
     }
 
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError> {
         let mut all_messages = Vec::new();
         if let Some(sys) = system {
             all_messages.push(Message {
@@ -537,11 +555,9 @@ impl Provider for LmStudioProvider {
                             Err(ProviderError::ApiError(error_text))
                         }))
                     }
-                    Err(e) => {
-                        Box::pin(futures::stream::once(async move {
-                            Err(ProviderError::NetworkError(e.to_string()))
-                        }))
-                    }
+                    Err(e) => Box::pin(futures::stream::once(async move {
+                        Err(ProviderError::NetworkError(e.to_string()))
+                    })),
                 }
             }
             LmStudioMode::LocalLlamaCpp | LmStudioMode::Auto => {
@@ -564,8 +580,16 @@ impl Provider for LmStudioProvider {
                                 if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                                     if let Ok(sub) = std::fs::read_dir(entry.path()) {
                                         for sub_entry in sub.flatten() {
-                                            if sub_entry.path().extension().map(|e| e == "gguf").unwrap_or(false) {
-                                                let name = sub_entry.file_name().to_string_lossy().to_string();
+                                            if sub_entry
+                                                .path()
+                                                .extension()
+                                                .map(|e| e == "gguf")
+                                                .unwrap_or(false)
+                                            {
+                                                let name = sub_entry
+                                                    .file_name()
+                                                    .to_string_lossy()
+                                                    .to_string();
                                                 discovered.push((name, sub_entry.path()));
                                             }
                                         }
@@ -575,21 +599,28 @@ impl Provider for LmStudioProvider {
                         }
                     }
 
-                    let model_path = discovered.iter()
+                    let model_path = discovered
+                        .iter()
                         .find(|(name, _)| name.to_lowercase().contains(&model.to_lowercase()))
                         .map(|(_, path)| path.clone())
                         .ok_or_else(|| ProviderError::ModelNotFound(model.clone()))?;
 
                     // Start local server
-                    let turboquant = turboquant.as_ref()
-                        .ok_or_else(|| ProviderError::ConfigError("Turboquant path not set".to_string()))?;
+                    let turboquant = turboquant.as_ref().ok_or_else(|| {
+                        ProviderError::ConfigError("Turboquant path not set".to_string())
+                    })?;
 
                     let mut child = std::process::Command::new(turboquant)
                         .arg(format!("--model={}", model_path.display()))
                         .arg(format!("--port={}", local_port))
                         .arg("--ctx-size=8192")
                         .spawn()
-                        .map_err(|e| ProviderError::ConfigError(format!("Failed to start llama-server: {}", e)))?;
+                        .map_err(|e| {
+                            ProviderError::ConfigError(format!(
+                                "Failed to start llama-server: {}",
+                                e
+                            ))
+                        })?;
 
                     // Wait for server
                     let url = format!("http://localhost:{}/health", local_port);
@@ -602,7 +633,9 @@ impl Provider for LmStudioProvider {
                     }
 
                     // Send completion request
-                    let request_json = messages_json.ok_or_else(|| ProviderError::ApiError("Failed to serialize messages".to_string()))?;
+                    let request_json = messages_json.ok_or_else(|| {
+                        ProviderError::ApiError("Failed to serialize messages".to_string())
+                    })?;
                     let response = client
                         .post(&format!("http://localhost:{}/completion", local_port))
                         .header("Content-Type", "application/json")
@@ -615,13 +648,19 @@ impl Provider for LmStudioProvider {
                     let _ = child.kill();
 
                     if !response.status().is_success() {
-                        return Err(ProviderError::ApiError("Completion request failed".to_string()));
+                        return Err(ProviderError::ApiError(
+                            "Completion request failed".to_string(),
+                        ));
                     }
 
                     #[derive(serde::Deserialize)]
-                    struct CompletionResponse { content: String }
+                    struct CompletionResponse {
+                        content: String,
+                    }
 
-                    let result: CompletionResponse = response.json().await
+                    let result: CompletionResponse = response
+                        .json()
+                        .await
                         .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
                     Ok(StreamChunk {
@@ -721,8 +760,16 @@ mod tests {
     fn test_convert_messages() {
         let provider = LmStudioProvider::new();
         let messages = vec![
-            Message { role: Role::System, content: "You are helpful.".to_string(), name: None },
-            Message { role: Role::User, content: "Hello".to_string(), name: None },
+            Message {
+                role: Role::System,
+                content: "You are helpful.".to_string(),
+                name: None,
+            },
+            Message {
+                role: Role::User,
+                content: "Hello".to_string(),
+                name: None,
+            },
         ];
 
         let converted = provider.convert_messages(messages);

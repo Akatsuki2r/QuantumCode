@@ -2,13 +2,13 @@
 //!
 //! Handles starting, stopping, and health checking llama.cpp server instances.
 
+use color_eyre::eyre::{eyre, Result, WrapErr};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use color_eyre::eyre::{Result, WrapErr, eyre};
 
 /// Default port for llama.cpp server
 const DEFAULT_PORT: u16 = 8080;
@@ -104,7 +104,9 @@ impl ModelSupervisor {
 
     /// Start the llama.cpp server for a given model
     fn start(&mut self, model: &str) -> Result<()> {
-        let model_path = self.model_paths.get(model)
+        let model_path = self
+            .model_paths
+            .get(model)
             .ok_or_else(|| eyre!("Model path not configured for: {}", model))?;
 
         // Verify the model file exists
@@ -117,18 +119,21 @@ impl ModelSupervisor {
         let ctx_arg = "--ctx-size=8192".to_string();
 
         let mut cmd = Command::new("llama-server");
-        cmd.arg(&model_arg)
-            .arg(&port_arg)
-            .arg(&ctx_arg);
+        cmd.arg(&model_arg).arg(&port_arg).arg(&ctx_arg);
 
         // Start the process
-        let child = cmd.spawn()
+        let child = cmd
+            .spawn()
             .wrap_err_with(|| format!("Failed to start llama-server for model: {}", model))?;
 
         self.process = Some(child);
         self.active_model = Some(model.to_string());
 
-        tracing::info!("Started llama.cpp server for model '{}' on port {}", model, self.port);
+        tracing::info!(
+            "Started llama.cpp server for model '{}' on port {}",
+            model,
+            self.port
+        );
 
         Ok(())
     }
@@ -137,11 +142,13 @@ impl ModelSupervisor {
     pub fn stop(&mut self) -> Result<()> {
         if let Some(mut process) = self.process.take() {
             // Try graceful shutdown first
-            process.kill()
+            process
+                .kill()
                 .wrap_err("Failed to kill llama-server process")?;
 
             // Wait for process to exit
-            process.wait()
+            process
+                .wait()
                 .wrap_err("Failed to wait for llama-server process")?;
 
             tracing::info!("Stopped llama.cpp server");
@@ -164,7 +171,10 @@ impl ModelSupervisor {
                 match process.try_wait() {
                     Ok(Some(status)) => {
                         // Process has exited
-                        return Err(eyre!("llama-server process exited unexpectedly with status: {}", status));
+                        return Err(eyre!(
+                            "llama-server process exited unexpectedly with status: {}",
+                            status
+                        ));
                     }
                     Ok(None) => {
                         // Process is still running, check health using async runtime
@@ -186,7 +196,9 @@ impl ModelSupervisor {
             }
         }
 
-        Err(eyre!("Timeout waiting for llama.cpp server to become ready"))
+        Err(eyre!(
+            "Timeout waiting for llama.cpp server to become ready"
+        ))
     }
 
     /// Health check using async API
@@ -194,7 +206,12 @@ impl ModelSupervisor {
         let client = reqwest::Client::new();
         let url = format!("{}/health", self.base_url());
 
-        match client.get(&url).timeout(Duration::from_secs(5)).send().await {
+        match client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }
@@ -245,7 +262,10 @@ mod tests {
     #[test]
     fn test_add_model_path() {
         let mut supervisor = ModelSupervisor::new();
-        supervisor.add_model_path("llama3.2".to_string(), PathBuf::from("/models/llama3.2.gguf"));
+        supervisor.add_model_path(
+            "llama3.2".to_string(),
+            PathBuf::from("/models/llama3.2.gguf"),
+        );
         assert!(supervisor.model_paths.contains_key("llama3.2"));
     }
 }

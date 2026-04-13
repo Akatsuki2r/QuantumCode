@@ -30,7 +30,12 @@ fn list_sessions() -> Result<()> {
     let mut sessions = Vec::new();
     for entry in std::fs::read_dir(&sessions_dir)? {
         let entry = entry?;
-        if entry.path().extension().map(|e| e == "json").unwrap_or(false) {
+        if entry
+            .path()
+            .extension()
+            .map(|e| e == "json")
+            .unwrap_or(false)
+        {
             if let Some(name) = entry.file_name().to_str() {
                 sessions.push(name.trim_end_matches(".json").to_string());
             }
@@ -74,7 +79,9 @@ fn resume_session(id: Option<String>) -> Result<()> {
 /// Save current session
 fn save_session(name: Option<String>) -> Result<()> {
     let session_name = name.unwrap_or_else(|| {
-        chrono::Local::now().format("session_%Y%m%d_%H%M%S").to_string()
+        chrono::Local::now()
+            .format("session_%Y%m%d_%H%M%S")
+            .to_string()
     });
 
     println!("Saving session: {}", session_name);

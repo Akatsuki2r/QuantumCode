@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
 
-use super::provider_trait::{Provider, ProviderError, Message, Role, StreamChunk};
+use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 use color_eyre::eyre::Result;
 
 /// Ollama API client
@@ -105,7 +105,8 @@ impl OllamaProvider {
             name: String,
         }
 
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await
@@ -170,7 +171,8 @@ impl Provider for OllamaProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.base_url))
             .header("Content-Type", "application/json")
             .json(&request)
@@ -191,7 +193,11 @@ impl Provider for OllamaProvider {
         Ok(result.message.content)
     }
 
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError> {
         // Prepend system message if provided
         let mut all_messages = Vec::new();
         if let Some(sys) = system {
@@ -208,7 +214,8 @@ impl Provider for OllamaProvider {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/chat", self.base_url))
             .header("Content-Type", "application/json")
             .json(&request)

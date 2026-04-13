@@ -1,14 +1,15 @@
 //! File writing tool
 
-use std::path::Path;
 use color_eyre::eyre::Result;
+use std::path::Path;
 
 /// Write content to file
 pub fn write_file(path: &Path, content: &str) -> Result<()> {
     // Create parent directories if needed
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to create directory {:?}: {}", parent, e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            color_eyre::eyre::eyre!("Failed to create directory {:?}: {}", parent, e)
+        })?;
     }
 
     std::fs::write(path, content)
