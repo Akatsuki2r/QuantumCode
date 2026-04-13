@@ -1,10 +1,10 @@
 //! Theme system for terminal styling
 
-use std::path::PathBuf;
-use std::fs;
-use serde::{Deserialize, Serialize};
-use ratatui::style::{Color, Modifier};
 use color_eyre::eyre::{Result, WrapErr};
+use ratatui::style::{Color, Modifier};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 
 /// RGB color representation
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -24,12 +24,9 @@ impl RgbColor {
         if hex.len() != 6 {
             return Err(color_eyre::eyre::eyre!("Invalid hex color: {}", hex));
         }
-        let r = u8::from_str_radix(&hex[0..2], 16)
-            .wrap_err("Invalid hex color")?;
-        let g = u8::from_str_radix(&hex[2..4], 16)
-            .wrap_err("Invalid hex color")?;
-        let b = u8::from_str_radix(&hex[4..6], 16)
-            .wrap_err("Invalid hex color")?;
+        let r = u8::from_str_radix(&hex[0..2], 16).wrap_err("Invalid hex color")?;
+        let g = u8::from_str_radix(&hex[2..4], 16).wrap_err("Invalid hex color")?;
+        let b = u8::from_str_radix(&hex[4..6], 16).wrap_err("Invalid hex color")?;
         Ok(Self { r, g, b })
     }
 
@@ -163,10 +160,8 @@ impl Theme {
         let theme_path = themes_dir.join(format!("{}.toml", name));
 
         if theme_path.exists() {
-            let content = fs::read_to_string(&theme_path)
-                .wrap_err("Failed to read theme file")?;
-            let theme: Theme = toml::from_str(&content)
-                .wrap_err("Failed to parse theme file")?;
+            let content = fs::read_to_string(&theme_path).wrap_err("Failed to read theme file")?;
+            let theme: Theme = toml::from_str(&content).wrap_err("Failed to parse theme file")?;
             Ok(theme)
         } else {
             Err(color_eyre::eyre::eyre!("Theme not found: {}", name))
@@ -186,8 +181,7 @@ impl Theme {
         // Add custom themes
         let themes_dir = Self::themes_dir()?;
         if themes_dir.exists() {
-            for entry in fs::read_dir(&themes_dir)
-                .wrap_err("Failed to read themes directory")? {
+            for entry in fs::read_dir(&themes_dir).wrap_err("Failed to read themes directory")? {
                 let entry = entry.wrap_err("Failed to read theme entry")?;
                 if let Some(name) = entry.path().file_stem() {
                     if let Some(name_str) = name.to_str() {
@@ -218,7 +212,8 @@ impl Theme {
     pub fn oxidized() -> Self {
         Self {
             name: "oxidized".to_string(),
-            description: "Oxidized - Elegant rusty brown on deep black, inspired by Rust".to_string(),
+            description: "Oxidized - Elegant rusty brown on deep black, inspired by Rust"
+                .to_string(),
             author: "Quantumn".to_string(),
             colors: ThemeColors {
                 background: "#0f0f0f".to_string(),
@@ -387,15 +382,12 @@ impl Theme {
     /// Save theme to file
     pub fn save(&self) -> Result<()> {
         let themes_dir = Self::themes_dir()?;
-        fs::create_dir_all(&themes_dir)
-            .wrap_err("Failed to create themes directory")?;
+        fs::create_dir_all(&themes_dir).wrap_err("Failed to create themes directory")?;
 
         let theme_path = themes_dir.join(format!("{}.toml", self.name));
-        let content = toml::to_string_pretty(self)
-            .wrap_err("Failed to serialize theme")?;
+        let content = toml::to_string_pretty(self).wrap_err("Failed to serialize theme")?;
 
-        fs::write(&theme_path, content)
-            .wrap_err("Failed to write theme file")?;
+        fs::write(&theme_path, content).wrap_err("Failed to write theme file")?;
 
         Ok(())
     }

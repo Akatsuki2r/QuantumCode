@@ -74,7 +74,15 @@ pub async fn run() -> Result<()> {
     let sessions_dir = get_sessions_dir()?;
     let session_count = if sessions_dir.exists() {
         std::fs::read_dir(&sessions_dir)
-            .map(|d| d.filter(|e| e.as_ref().ok().map(|e| e.path().extension().map(|e| e == "json").unwrap_or(false)).unwrap_or(false)).count())
+            .map(|d| {
+                d.filter(|e| {
+                    e.as_ref()
+                        .ok()
+                        .map(|e| e.path().extension().map(|e| e == "json").unwrap_or(false))
+                        .unwrap_or(false)
+                })
+                .count()
+            })
             .unwrap_or(0)
     } else {
         0

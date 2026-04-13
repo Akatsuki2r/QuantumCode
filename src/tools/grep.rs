@@ -1,8 +1,8 @@
 //! Pattern search tool (grep-like)
 
-use std::path::Path;
-use regex::Regex;
 use color_eyre::eyre::Result;
+use regex::Regex;
+use std::path::Path;
 
 /// Search result
 #[derive(Debug, Clone)]
@@ -15,8 +15,8 @@ pub struct SearchResult {
 /// Search for pattern in file
 pub fn search_file(path: &Path, pattern: &str) -> Result<Vec<SearchResult>> {
     let content = super::read_file::read_file(path)?;
-    let regex = Regex::new(pattern)
-        .map_err(|e| color_eyre::eyre::eyre!("Invalid regex pattern: {}", e))?;
+    let regex =
+        Regex::new(pattern).map_err(|e| color_eyre::eyre::eyre!("Invalid regex pattern: {}", e))?;
 
     let results: Vec<SearchResult> = content
         .lines()
@@ -47,10 +47,14 @@ pub fn search_pattern(files: &[&Path], pattern: &str) -> Result<Vec<SearchResult
 }
 
 /// Search with context
-pub fn search_with_context(path: &Path, pattern: &str, context: usize) -> Result<Vec<(SearchResult, Vec<String>)>> {
+pub fn search_with_context(
+    path: &Path,
+    pattern: &str,
+    context: usize,
+) -> Result<Vec<(SearchResult, Vec<String>)>> {
     let content = super::read_file::read_file(path)?;
-    let regex = Regex::new(pattern)
-        .map_err(|e| color_eyre::eyre::eyre!("Invalid regex pattern: {}", e))?;
+    let regex =
+        Regex::new(pattern).map_err(|e| color_eyre::eyre::eyre!("Invalid regex pattern: {}", e))?;
 
     let lines: Vec<&str> = content.lines().collect();
     let mut results = Vec::new();
@@ -59,10 +63,8 @@ pub fn search_with_context(path: &Path, pattern: &str, context: usize) -> Result
         if regex.is_match(line) {
             let start = i.saturating_sub(context);
             let end = (i + context + 1).min(lines.len());
-            let context_lines: Vec<String> = lines[start..end]
-                .iter()
-                .map(|l| l.to_string())
-                .collect();
+            let context_lines: Vec<String> =
+                lines[start..end].iter().map(|l| l.to_string()).collect();
 
             results.push((
                 SearchResult {

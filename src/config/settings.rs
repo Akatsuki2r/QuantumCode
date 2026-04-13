@@ -1,10 +1,10 @@
 //! User settings configuration
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::fs;
-use serde::{Deserialize, Serialize};
 use color_eyre::eyre::{Result, WrapErr};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 /// Default provider options
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,6 +13,7 @@ pub enum ProviderType {
     OpenAI,
     Ollama,
     LlamaCpp,
+    LmStudio,
 }
 
 /// llama.cpp configuration
@@ -38,6 +39,30 @@ impl Default for LlamaCppConfig {
             model_paths: HashMap::new(),
             fallback_to_ollama: true,
             auto_start: false, // Disabled by default since it requires llama-server binary
+        }
+    }
+}
+
+/// LM Studio configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LmStudioConfig {
+    /// Enable LM Studio provider
+    pub enabled: bool,
+    /// Base URL for LM Studio server
+    pub base_url: String,
+    /// API token (optional, from LM Studio developer settings)
+    pub api_token: Option<String>,
+    /// Model name to model ID mapping (for custom model names)
+    pub model_paths: HashMap<String, String>,
+}
+
+impl Default for LmStudioConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            base_url: "http://localhost:1234".to_string(),
+            api_token: None,
+            model_paths: HashMap::new(),
         }
     }
 }
@@ -150,6 +175,8 @@ pub struct Settings {
     pub keybindings: std::collections::HashMap<String, String>,
     /// llama.cpp configuration
     pub llama_cpp: LlamaCppConfig,
+    /// LM Studio configuration
+    pub lm_studio: LmStudioConfig,
 }
 
 impl Default for Settings {
@@ -161,6 +188,7 @@ impl Default for Settings {
             ui: UIConfig::default(),
             keybindings: std::collections::HashMap::new(),
             llama_cpp: LlamaCppConfig::default(),
+            lm_studio: LmStudioConfig::default(),
         }
     }
 }
@@ -180,10 +208,9 @@ impl Settings {
         let path = Self::config_path()?;
 
         if path.exists() {
-            let content = fs::read_to_string(&path)
-                .wrap_err("Failed to read config file")?;
-            let settings: Settings = toml::from_str(&content)
-                .wrap_err("Failed to parse config file")?;
+            let content = fs::read_to_string(&path).wrap_err("Failed to read config file")?;
+            let settings: Settings =
+                toml::from_str(&content).wrap_err("Failed to parse config file")?;
             Ok(settings)
         } else {
             let settings = Self::default();
@@ -198,15 +225,12 @@ impl Settings {
 
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .wrap_err("Failed to create config directory")?;
+            fs::create_dir_all(parent).wrap_err("Failed to create config directory")?;
         }
 
-        let content = toml::to_string_pretty(self)
-            .wrap_err("Failed to serialize settings")?;
+        let content = toml::to_string_pretty(self).wrap_err("Failed to serialize settings")?;
 
-        fs::write(&path, content)
-            .wrap_err("Failed to write config file")?;
+        fs::write(&path, content).wrap_err("Failed to write config file")?;
 
         Ok(())
     }
@@ -223,7 +247,12 @@ impl Settings {
             "editor.tab_width" => Some(self.editor.tab_width.to_string()),
             "editor.use_spaces" => Some(self.editor.use_spaces.to_string()),
             "editor.line_numbers" => Some(self.editor.line_numbers.to_string()),
-            "editor.auto_save" => Some(self.editor.auto_save.map(|v| v.to_string()).unwrap_or_default()),
+            "editor.auto_save" => Some(
+                self.editor
+                    .auto_save
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+            ),
             "ui.theme" => Some(self.ui.theme.clone()),
             "ui.show_file_tree" => Some(self.ui.show_file_tree.to_string()),
             "ui.show_token_count" => Some(self.ui.show_token_count.to_string()),
@@ -233,6 +262,8 @@ impl Settings {
             "llama_cpp.default_port" => Some(self.llama_cpp.default_port.to_string()),
             "llama_cpp.fallback_to_ollama" => Some(self.llama_cpp.fallback_to_ollama.to_string()),
             "llama_cpp.auto_start" => Some(self.llama_cpp.auto_start.to_string()),
+            "lm_studio.enabled" => Some(self.lm_studio.enabled.to_string()),
+            "lm_studio.base_url" => Some(self.lm_studio.base_url.clone()),
             _ => None,
         }
     }
@@ -244,35 +275,54 @@ impl Settings {
             "model.default_model" => self.model.default_model = value.to_string(),
             "model.api_key_env" => self.model.api_key_env = value.to_string(),
             "git.commit_format" => self.git.commit_format = value.to_string(),
-            "git.include_coauthors" => self.git.include_coauthors = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "git.conventional_commits" => self.git.conventional_commits = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "editor.tab_width" => self.editor.tab_width = value.parse()
-                .wrap_err("Invalid number")?,
-            "editor.use_spaces" => self.editor.use_spaces = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "editor.line_numbers" => self.editor.line_numbers = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "editor.auto_save" => self.editor.auto_save = Some(value.parse()
-                .wrap_err("Invalid number")?),
+            "git.include_coauthors" => {
+                self.git.include_coauthors = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "git.conventional_commits" => {
+                self.git.conventional_commits = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "editor.tab_width" => {
+                self.editor.tab_width = value.parse().wrap_err("Invalid number")?
+            }
+            "editor.use_spaces" => {
+                self.editor.use_spaces = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "editor.line_numbers" => {
+                self.editor.line_numbers = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "editor.auto_save" => {
+                self.editor.auto_save = Some(value.parse().wrap_err("Invalid number")?)
+            }
             "ui.theme" => self.ui.theme = value.to_string(),
-            "ui.show_file_tree" => self.ui.show_file_tree = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "ui.show_token_count" => self.ui.show_token_count = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "ui.show_cost" => self.ui.show_cost = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "ui.animation_speed" => self.ui.animation_speed = value.parse()
-                .wrap_err("Invalid number")?,
-            "llama_cpp.enabled" => self.llama_cpp.enabled = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "llama_cpp.default_port" => self.llama_cpp.default_port = value.parse()
-                .wrap_err("Invalid port number")?,
-            "llama_cpp.fallback_to_ollama" => self.llama_cpp.fallback_to_ollama = value.parse()
-                .wrap_err("Invalid boolean value")?,
-            "llama_cpp.auto_start" => self.llama_cpp.auto_start = value.parse()
-                .wrap_err("Invalid boolean value")?,
+            "ui.show_file_tree" => {
+                self.ui.show_file_tree = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "ui.show_token_count" => {
+                self.ui.show_token_count = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "ui.show_cost" => {
+                self.ui.show_cost = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "ui.animation_speed" => {
+                self.ui.animation_speed = value.parse().wrap_err("Invalid number")?
+            }
+            "llama_cpp.enabled" => {
+                self.llama_cpp.enabled = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "llama_cpp.default_port" => {
+                self.llama_cpp.default_port = value.parse().wrap_err("Invalid port number")?
+            }
+            "llama_cpp.fallback_to_ollama" => {
+                self.llama_cpp.fallback_to_ollama =
+                    value.parse().wrap_err("Invalid boolean value")?
+            }
+            "llama_cpp.auto_start" => {
+                self.llama_cpp.auto_start = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "lm_studio.enabled" => {
+                self.lm_studio.enabled = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "lm_studio.base_url" => self.lm_studio.base_url = value.to_string(),
             _ => return Err(color_eyre::eyre::eyre!("Unknown setting: {}", key)),
         }
         Ok(())

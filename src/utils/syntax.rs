@@ -1,9 +1,9 @@
 //! Syntax highlighting utilities
 
-use syntect::parsing::SyntaxSet;
-use syntect::highlighting::{ThemeSet, Theme};
-use syntect::easy::HighlightLines;
 use std::sync::OnceLock;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::parsing::SyntaxSet;
 
 /// Global syntax set
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -13,16 +13,12 @@ static THEME_SET: OnceLock<ThemeSet> = OnceLock::new();
 
 /// Get the syntax set
 fn get_syntax_set() -> &'static SyntaxSet {
-    SYNTAX_SET.get_or_init(|| {
-        SyntaxSet::load_defaults_newlines()
-    })
+    SYNTAX_SET.get_or_init(|| SyntaxSet::load_defaults_newlines())
 }
 
 /// Get the theme set
 fn get_theme_set() -> &'static ThemeSet {
-    THEME_SET.get_or_init(|| {
-        ThemeSet::load_defaults()
-    })
+    THEME_SET.get_or_init(|| ThemeSet::load_defaults())
 }
 
 /// Highlight code with syntax highlighting
@@ -74,7 +70,9 @@ pub fn highlight_with_theme(code: &str, language: &str, theme_name: &str) -> Str
         .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
     // Find theme
-    let theme = theme_set.themes.get(theme_name)
+    let theme = theme_set
+        .themes
+        .get(theme_name)
         .or_else(|| theme_set.themes.get("base16-eighties"))
         .unwrap();
 

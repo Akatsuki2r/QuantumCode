@@ -1,7 +1,7 @@
 //! File globbing tool
 
-use std::path::{Path, PathBuf};
 use color_eyre::eyre::Result;
+use std::path::{Path, PathBuf};
 
 /// Find files matching pattern
 pub fn find_files(pattern: &str, base: &Path) -> Result<Vec<PathBuf>> {
@@ -43,9 +43,7 @@ fn search_with_glob(dir: &Path, pattern_parts: &[&str], results: &mut Vec<PathBu
 }
 
 fn matches_pattern(path: &Path, pattern_parts: &[&str]) -> bool {
-    let file_name = path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
     if pattern_parts.is_empty() {
         return true;
@@ -105,7 +103,9 @@ fn find_all_recursive(dir: &Path, results: &mut Vec<PathBuf>) {
             if path.is_dir() {
                 // Skip hidden directories and common non-source directories
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with('.') || ["node_modules", "target", "build", "dist", "vendor"].contains(&name) {
+                    if name.starts_with('.')
+                        || ["node_modules", "target", "build", "dist", "vendor"].contains(&name)
+                    {
                         continue;
                     }
                 }

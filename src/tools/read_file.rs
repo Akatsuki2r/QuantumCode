@@ -1,7 +1,7 @@
 //! File reading tool
 
-use std::path::Path;
 use color_eyre::eyre::Result;
+use std::path::Path;
 
 /// Read file contents
 pub fn read_file(path: &Path) -> Result<String> {

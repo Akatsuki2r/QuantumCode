@@ -1,7 +1,7 @@
 //! Code review command implementation
 
-use std::path::PathBuf;
 use color_eyre::eyre::Result;
+use std::path::PathBuf;
 
 /// Run code review with AI
 pub async fn run(files: Vec<PathBuf>, model: Option<String>) -> Result<()> {

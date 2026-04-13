@@ -1,9 +1,9 @@
 //! Provider trait and common types
 
 use async_trait::async_trait;
+use color_eyre::eyre::Result;
 use futures::Stream;
 use std::pin::Pin;
-use color_eyre::eyre::Result;
 
 /// Message role
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,7 +75,11 @@ pub trait Provider: Send + Sync {
     async fn send(&self, messages: Vec<Message>) -> Result<String, ProviderError>;
 
     /// Send a message with a system prompt and get a response
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError>;
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError>;
 
     /// Send a message and get a streaming response
     async fn send_stream(

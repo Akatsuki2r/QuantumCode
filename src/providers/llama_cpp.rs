@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::provider_trait::{Provider, ProviderError, Message, Role, StreamChunk};
+use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 use crate::supervisor::ModelSupervisor;
 
 /// llama.cpp server provider
@@ -232,10 +232,16 @@ impl LlamaCppProvider {
         for message in messages {
             match message.role {
                 Role::System => {
-                    prompt.push_str(&format!("<|im_start|>system\n{}<|im_end|>\n", message.content));
+                    prompt.push_str(&format!(
+                        "<|im_start|>system\n{}<|im_end|>\n",
+                        message.content
+                    ));
                 }
                 Role::User => {
-                    prompt.push_str(&format!("<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", message.content));
+                    prompt.push_str(&format!(
+                        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                        message.content
+                    ));
                 }
                 Role::Assistant => {
                     prompt.push_str(&format!("{}<|im_end|>\n", message.content));
@@ -256,7 +262,10 @@ impl LlamaCppProvider {
                     prompt.push_str(&format!("### System:\n{}\n\n", message.content));
                 }
                 Role::User => {
-                    prompt.push_str(&format!("### Instruction:\n{}\n\n### Response:\n", message.content));
+                    prompt.push_str(&format!(
+                        "### Instruction:\n{}\n\n### Response:\n",
+                        message.content
+                    ));
                 }
                 Role::Assistant => {
                     prompt.push_str(&format!("{}\n\n", message.content));
@@ -306,7 +315,8 @@ impl LlamaCppProvider {
         let mut supervisor = self.supervisor.lock().await;
 
         // Ensure model is loaded
-        supervisor.ensure(&self.model)
+        supervisor
+            .ensure(&self.model)
             .map_err(|e| ProviderError::ApiError(format!("Failed to start model: {}", e)))?;
 
         Ok(())
@@ -321,7 +331,13 @@ impl LlamaCppProvider {
     pub async fn is_running(&self) -> bool {
         let url = format!("{}/health", self.get_base_url());
 
-        match self.client.get(&url).timeout(std::time::Duration::from_secs(5)).send().await {
+        match self
+            .client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }
@@ -370,7 +386,8 @@ impl Provider for LlamaCppProvider {
 
         let url = format!("{}/completion", base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&request)
@@ -392,7 +409,11 @@ impl Provider for LlamaCppProvider {
         Ok(result.content)
     }
 
-    async fn send_with_system(&self, messages: Vec<Message>, system: Option<&str>) -> Result<String, ProviderError> {
+    async fn send_with_system(
+        &self,
+        messages: Vec<Message>,
+        system: Option<&str>,
+    ) -> Result<String, ProviderError> {
         // Ensure model is loaded
         self.ensure_model().await?;
 
@@ -421,7 +442,8 @@ impl Provider for LlamaCppProvider {
 
         let url = format!("{}/completion", base_url);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&request)
@@ -449,9 +471,7 @@ impl Provider for LlamaCppProvider {
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
         // Ensure model is loaded
         if let Err(e) = self.ensure_model().await {
-            return Box::pin(futures::stream::once(async move {
-                Err(e)
-            }));
+            return Box::pin(futures::stream::once(async move { Err(e) }));
         }
 
         let prompt = self.format_prompt(&messages);
@@ -491,11 +511,9 @@ impl Provider for LlamaCppProvider {
                     Box::pin(parse_sse_stream(resp))
                 }
             }
-            Err(e) => {
-                Box::pin(futures::stream::once(async move {
-                    Err(ProviderError::NetworkError(e.to_string()))
-                }))
-            }
+            Err(e) => Box::pin(futures::stream::once(async move {
+                Err(ProviderError::NetworkError(e.to_string()))
+            })),
         }
     }
 
@@ -580,8 +598,16 @@ mod tests {
     fn test_format_llama() {
         let provider = LlamaCppProvider::standalone();
         let messages = vec![
-            Message { role: Role::System, content: "You are helpful.".to_string(), name: None },
-            Message { role: Role::User, content: "Hello".to_string(), name: None },
+            Message {
+                role: Role::System,
+                content: "You are helpful.".to_string(),
+                name: None,
+            },
+            Message {
+                role: Role::User,
+                content: "Hello".to_string(),
+                name: None,
+            },
         ];
 
         let prompt = provider.format_prompt(&messages);
@@ -595,9 +621,11 @@ mod tests {
         let mut provider = LlamaCppProvider::standalone();
         provider.model = "qwen2.5".to_string();
 
-        let messages = vec![
-            Message { role: Role::User, content: "Hello".to_string(), name: None },
-        ];
+        let messages = vec![Message {
+            role: Role::User,
+            content: "Hello".to_string(),
+            name: None,
+        }];
 
         let prompt = provider.format_prompt(&messages);
         assert!(prompt.contains("<|im_start|>user"));
@@ -608,9 +636,21 @@ mod tests {
     fn test_detect_format() {
         let provider = LlamaCppProvider::standalone();
 
-        assert!(matches!(provider.detect_format("llama3.2"), PromptFormat::Llama));
-        assert!(matches!(provider.detect_format("qwen2.5"), PromptFormat::ChatML));
-        assert!(matches!(provider.detect_format("vicuna"), PromptFormat::Vicuna));
-        assert!(matches!(provider.detect_format("alpaca"), PromptFormat::Alpaca));
+        assert!(matches!(
+            provider.detect_format("llama3.2"),
+            PromptFormat::Llama
+        ));
+        assert!(matches!(
+            provider.detect_format("qwen2.5"),
+            PromptFormat::ChatML
+        ));
+        assert!(matches!(
+            provider.detect_format("vicuna"),
+            PromptFormat::Vicuna
+        ));
+        assert!(matches!(
+            provider.detect_format("alpaca"),
+            PromptFormat::Alpaca
+        ));
     }
 }

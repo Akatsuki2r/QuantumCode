@@ -1,7 +1,7 @@
 //! Test runner command implementation
 
-use std::path::PathBuf;
 use color_eyre::eyre::Result;
+use std::path::PathBuf;
 
 /// Run tests with AI analysis
 pub async fn run(path: Option<PathBuf>, model: Option<String>) -> Result<()> {
@@ -16,7 +16,11 @@ pub async fn run(path: Option<PathBuf>, model: Option<String>) -> Result<()> {
     // Detect project type and test command
     let test_command = detect_test_command()?;
 
-    println!("Detected test command: {} {}", test_command.0, test_command.1.join(" "));
+    println!(
+        "Detected test command: {} {}",
+        test_command.0,
+        test_command.1.join(" ")
+    );
     println!();
 
     // Run tests
@@ -66,7 +70,10 @@ fn detect_test_command() -> Result<(String, Vec<String>)> {
     }
 
     if std::path::Path::new("go.mod").exists() {
-        return Ok(("go".to_string(), vec!["test".to_string(), "./...".to_string()]));
+        return Ok((
+            "go".to_string(),
+            vec!["test".to_string(), "./...".to_string()],
+        ));
     }
 
     if std::path::Path::new("pytest.ini").exists() || std::path::Path::new("setup.py").exists() {

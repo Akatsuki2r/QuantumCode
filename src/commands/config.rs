@@ -31,7 +31,10 @@ fn show_config() -> Result<()> {
     println!("Git:");
     println!("  commit_format: {}", settings.git.commit_format);
     println!("  include_coauthors: {}", settings.git.include_coauthors);
-    println!("  conventional_commits: {}", settings.git.conventional_commits);
+    println!(
+        "  conventional_commits: {}",
+        settings.git.conventional_commits
+    );
     println!();
 
     println!("Editor:");

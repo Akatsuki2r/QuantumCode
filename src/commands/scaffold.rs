@@ -33,7 +33,10 @@ fn scaffold_rust(name: &str) -> Result<()> {
         .output()?;
 
     if !output.status.success() {
-        println!("Failed to create project: {}", String::from_utf8_lossy(&output.stderr));
+        println!(
+            "Failed to create project: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         return Ok(());
     }
 
@@ -52,7 +55,10 @@ Cargo.lock
     // Create README
     std::fs::write(
         project_path.join("README.md"),
-        format!("# {}\n\nA Rust project.\n\n## Usage\n\n```\ncargo run\n```\n", name),
+        format!(
+            "# {}\n\nA Rust project.\n\n## Usage\n\n```\ncargo run\n```\n",
+            name
+        ),
     )?;
 
     println!("✓ Created Rust project: {}", name);
@@ -71,11 +77,15 @@ fn scaffold_python(name: &str) -> Result<()> {
     std::fs::create_dir_all(project_path.join("tests"))?;
 
     // Create files
-    std::fs::write(project_path.join(".gitignore"), "*.pyc\n__pycache__/\n.env\n.venv/\n")?;
+    std::fs::write(
+        project_path.join(".gitignore"),
+        "*.pyc\n__pycache__/\n.env\n.venv/\n",
+    )?;
     std::fs::write(project_path.join("requirements.txt"), "")?;
     std::fs::write(
         project_path.join("setup.py"),
-        format!(r#"from setuptools import setup, find_packages
+        format!(
+            r#"from setuptools import setup, find_packages
 
 setup(
     name="{}",
@@ -83,10 +93,15 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
 )
-"#, name),
+"#,
+            name
+        ),
     )?;
     std::fs::write(
-        project_path.join("src").join(name.replace('-', "_")).join("__init__.py"),
+        project_path
+            .join("src")
+            .join(name.replace('-', "_"))
+            .join("__init__.py"),
         "",
     )?;
     std::fs::write(project_path.join("tests").join("__init__.py"), "")?;
@@ -120,7 +135,8 @@ fn scaffold_node(name: &str) -> Result<()> {
 
             std::fs::write(
                 project_path.join("package.json"),
-                format!(r#"{{
+                format!(
+                    r#"{{
   "name": "{}",
   "version": "1.0.0",
   "main": "index.js",
@@ -129,9 +145,14 @@ fn scaffold_node(name: &str) -> Result<()> {
     "test": "jest"
   }}
 }}
-"#, name),
+"#,
+                    name
+                ),
             )?;
-            std::fs::write(project_path.join("index.js"), "console.log('Hello, World!');\n")?;
+            std::fs::write(
+                project_path.join("index.js"),
+                "console.log('Hello, World!');\n",
+            )?;
             std::fs::write(project_path.join(".gitignore"), "node_modules/\n.env\n")?;
 
             println!("✓ Created Node.js project: {}", name);
@@ -153,7 +174,8 @@ fn scaffold_web(name: &str) -> Result<()> {
 
     std::fs::write(
         project_path.join("index.html"),
-        format!(r#"<!DOCTYPE html>
+        format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -166,7 +188,9 @@ fn scaffold_web(name: &str) -> Result<()> {
     <script src="js/main.js"></script>
 </body>
 </html>
-"#, name, name),
+"#,
+            name, name
+        ),
     )?;
 
     std::fs::write(
@@ -209,7 +233,10 @@ func main() {
 "#,
     )?;
 
-    std::fs::write(project_path.join(".gitignore"), "*.exe\n*.exe~\n*.dll\n*.so\n*.dylib\n")?;
+    std::fs::write(
+        project_path.join(".gitignore"),
+        "*.exe\n*.exe~\n*.dll\n*.so\n*.dylib\n",
+    )?;
 
     println!("✓ Created Go project: {}", name);
     println!("  cd {} && go run main.go", name);
