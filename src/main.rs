@@ -20,6 +20,7 @@ mod commands;
 mod config;
 mod prompts;
 mod providers;
+mod router;
 mod supervisor;
 mod tools;
 mod tui;

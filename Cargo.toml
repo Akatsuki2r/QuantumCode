@@ -92,6 +92,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Regex for pattern matching
 regex = "1"
 
+# Lazy static for regex compilation
+lazy_static = "1.4"
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
