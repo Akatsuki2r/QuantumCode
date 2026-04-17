@@ -1,5 +1,6 @@
 //! Dropdown selector widget for providers and models
 
+use crate::config::themes::RatatuiColors;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -42,6 +43,7 @@ pub enum DropdownState {
     Closed,
     ProviderSelected,
     ModelSelected,
+    ApiKeyInput,
 }
 
 /// A dropdown selector for providers and models
@@ -52,8 +54,10 @@ pub struct DropdownSelector {
     pub model_index: usize,
     pub selected_provider: Option<String>,
     pub selected_model: Option<String>,
-    pub show_api_key_prompt: bool,
     pub api_key_input: String,
+    pub api_key_env_var: String,
+    pub pending_provider: Option<String>,
+    pub pending_model: Option<String>,
 }
 
 impl DropdownSelector {
@@ -65,8 +69,49 @@ impl DropdownSelector {
             model_index: 0,
             selected_provider: None,
             selected_model: None,
-            show_api_key_prompt: false,
             api_key_input: String::new(),
+            api_key_env_var: String::new(),
+            pending_provider: None,
+            pending_model: None,
+        }
+    }
+
+    /// Open the dropdown — immediately show the provider list
+    pub fn open(&mut self) {
+        self.state = DropdownState::ProviderSelected;
+    }
+
+    /// Close the dropdown
+    pub fn close(&mut self) {
+        self.state = DropdownState::Closed;
+    }
+
+    /// Check if API key is set in environment for current provider
+    pub fn check_api_key_set(&self) -> bool {
+        if let Some(provider) = self.get_current_provider() {
+            if !provider.requires_api_key {
+                return true; // Local providers don't need API keys
+            }
+            let env_var = match provider.name.as_str() {
+                "anthropic" => std::env::var("ANTHROPIC_API_KEY").is_ok(),
+                "openai" => std::env::var("OPENAI_API_KEY").is_ok(),
+                _ => true,
+            };
+            return env_var;
+        }
+        false
+    }
+
+    /// Get the API key environment variable name for current provider
+    pub fn get_api_key_env_name(&self) -> Option<&str> {
+        let provider = self.get_current_provider()?;
+        if !provider.requires_api_key {
+            return None;
+        }
+        match provider.name.as_str() {
+            "anthropic" => Some("ANTHROPIC_API_KEY"),
+            "openai" => Some("OPENAI_API_KEY"),
+            _ => None,
         }
     }
 
@@ -176,7 +221,19 @@ impl DropdownSelector {
         }
     }
 
-    pub fn confirm_selection(&mut self) -> (String, String) {
+    pub fn confirm_selection(&mut self) -> Option<(String, String)> {
+        // Check if API key is needed and not set
+        if let Some(provider) = self.get_current_provider() {
+            if provider.requires_api_key && !self.check_api_key_set() {
+                // Store pending selection and move to API key input state
+                self.pending_provider = Some(provider.name.clone());
+                self.pending_model = self.selected_model.clone();
+                self.api_key_env_var = self.get_api_key_env_name().unwrap_or("API_KEY").to_string();
+                self.state = DropdownState::ApiKeyInput;
+                return None;
+            }
+        }
+
         let provider = self
             .selected_provider
             .clone()
@@ -186,7 +243,15 @@ impl DropdownSelector {
             .clone()
             .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
         self.state = DropdownState::Closed;
-        (provider, model)
+        Some((provider, model))
+    }
+
+    /// Confirm API key was set (user will set it externally)
+    pub fn confirm_api_key_set(&mut self) -> Option<(String, String)> {
+        self.state = DropdownState::Closed;
+        let provider = self.pending_provider.take().or_else(|| self.selected_provider.clone())?;
+        let model = self.pending_model.take().or_else(|| self.selected_model.clone())?;
+        Some((provider, model))
     }
 
     pub fn needs_api_key(&self) -> bool {
@@ -195,64 +260,105 @@ impl DropdownSelector {
             .unwrap_or(false)
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, focused: bool) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, colors: &RatatuiColors) {
         match self.state {
             DropdownState::Closed => {
                 // Render collapsed dropdown showing current selection
                 let display = match (&self.selected_provider, &self.selected_model) {
                     (Some(p), Some(m)) => format!("{}: {}", p, m),
-                    _ => "Select provider...".to_string(),
-                };
-
-                let style = if focused {
-                    Style::default().fg(Color::Cyan).bold()
-                } else {
-                    Style::default().fg(Color::White)
+                    _ => "Select provider... (press P)".to_string(),
                 };
 
                 let block = Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(if focused {
-                        Color::Cyan
-                    } else {
-                        Color::Gray
-                    }))
-                    .title(" Provider ");
+                    .border_style(Style::default().fg(colors.accent))
+                    .title(" Provider ")
+                    .title_style(Style::default().fg(colors.accent).bold());
 
-                let paragraph = Paragraph::new(display.as_str()).style(style).block(block);
+                let paragraph = Paragraph::new(display.as_str())
+                    .style(Style::default().fg(colors.foreground).bg(colors.background))
+                    .block(block);
 
                 frame.render_widget(paragraph, area);
             }
             DropdownState::ProviderSelected => {
-                // Render provider list
-                self.render_provider_list(frame, area);
+                self.render_provider_list(frame, area, colors);
             }
             DropdownState::ModelSelected => {
-                // Render model list
-                self.render_model_list(frame, area);
+                self.render_model_list(frame, area, colors);
+            }
+            DropdownState::ApiKeyInput => {
+                self.render_api_key_prompt(frame, area, colors);
             }
         }
     }
 
-    fn render_provider_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_api_key_prompt(&self, frame: &mut Frame, area: Rect, colors: &RatatuiColors) {
+        let env_var = &self.api_key_env_var;
+        let provider = self.pending_provider.as_deref().unwrap_or("provider");
+
+        let prompt_text = vec![
+            Line::from(Span::styled(
+                "API Key Required",
+                Style::default().fg(Color::Yellow).bold(),
+            )),
+            Line::default(),
+            Line::from(Span::styled(
+                format!("{} requires an API key.", provider),
+                Style::default().fg(colors.foreground),
+            )),
+            Line::default(),
+            Line::from(Span::styled(
+                "Set the environment variable, then press Enter:",
+                Style::default().fg(colors.info),
+            )),
+            Line::default(),
+            Line::from(Span::styled(
+                format!("  export {}=<your-key>", env_var),
+                Style::default().fg(Color::Green).bold(),
+            )),
+            Line::default(),
+            Line::from(Span::styled(
+                "Enter → confirm  │  Esc → cancel",
+                Style::default().fg(colors.muted),
+            )),
+        ];
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(" ⚠ API Key Required ")
+            .title_style(Style::default().fg(Color::Yellow).bold());
+
+        let paragraph = Paragraph::new(prompt_text)
+            .style(Style::default().bg(colors.background).fg(colors.foreground))
+            .block(block);
+
+        frame.render_widget(paragraph, area);
+    }
+
+    fn render_provider_list(&self, frame: &mut Frame, area: Rect, colors: &RatatuiColors) {
         let items: Vec<ListItem> = self
             .providers
             .iter()
             .enumerate()
             .map(|(i, p)| {
-                let icon = if p.is_local { "[L]" } else { "[C]" };
-                let api_note = if p.requires_api_key { " *" } else { "" };
-                let selected = if i == self.provider_index {
-                    " > "
+                let icon = if p.is_local { "⬇ Local" } else { "☁ Cloud" };
+                let api_badge = if p.requires_api_key {
+                    " [API key]"
                 } else {
-                    "   "
+                    "         "
                 };
-                let content = format!("{}{} {}{}", selected, icon, p.display_name, api_note);
+                let cursor = if i == self.provider_index { "▶ " } else { "  " };
+                let content = format!(
+                    "{}{:<24}{}{}",
+                    cursor, p.display_name, api_badge, icon
+                );
 
                 let style = if i == self.provider_index {
-                    Style::default().fg(Color::Cyan).bold()
+                    Style::default().fg(colors.accent).bold()
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(colors.foreground)
                 };
 
                 ListItem::new(Line::from(Span::styled(content, style)))
@@ -263,58 +369,56 @@ impl DropdownSelector {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan))
-                    .title(" Select Provider (↑↓ to navigate, Enter to select, Esc to close) ")
-                    .title_style(Style::default().fg(Color::Cyan).bold()),
+                    .border_style(Style::default().fg(colors.accent))
+                    .title(" 📡 Select Provider — ↑↓ navigate  Enter select  Esc close ")
+                    .title_style(Style::default().fg(colors.accent).bold()),
             )
-            .style(Style::default().bg(Color::Reset));
+            .style(Style::default().bg(colors.background).fg(colors.foreground));
 
         frame.render_widget(list, area);
     }
 
-    fn render_model_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_model_list(&self, frame: &mut Frame, area: Rect, colors: &RatatuiColors) {
         if let Some(provider) = self.get_current_provider() {
             let items: Vec<ListItem> = provider
                 .models
                 .iter()
                 .enumerate()
                 .map(|(i, m)| {
-                    let selected = if i == self.model_index { " > " } else { "   " };
+                    let cursor = if i == self.model_index { "▶ " } else { "  " };
                     let style = if i == self.model_index {
-                        Style::default().fg(Color::Cyan).bold()
+                        Style::default().fg(colors.accent).bold()
                     } else {
-                        Style::default().fg(Color::White)
+                        Style::default().fg(colors.foreground)
                     };
 
                     ListItem::new(Line::from(Span::styled(
-                        format!("{}{}", selected, m),
+                        format!("{}{}", cursor, m),
                         style,
                     )))
                 })
                 .collect();
 
+            let api_suffix = if provider.requires_api_key {
+                "  ⚠ API key required"
+            } else {
+                ""
+            };
+
             let list = List::new(items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Cyan))
+                        .border_style(Style::default().fg(colors.accent))
                         .title(format!(
-                            " Models for {} (↑↓ to navigate, Enter to confirm, ← Back) ",
-                            provider.display_name
+                            " Models — {}{}  ↩ Enter confirm  ← back ",
+                            provider.display_name, api_suffix
                         ))
-                        .title_style(Style::default().fg(Color::Cyan).bold()),
+                        .title_style(Style::default().fg(colors.accent).bold()),
                 )
-                .style(Style::default().bg(Color::Reset));
+                .style(Style::default().bg(colors.background).fg(colors.foreground));
 
             frame.render_widget(list, area);
-
-            // Show API key note if needed
-            if provider.requires_api_key {
-                let note = "⚠ API key required. Set ANTHROPIC_API_KEY or OPENAI_API_KEY";
-                let note_para = Paragraph::new(note).style(Style::default().fg(Color::Yellow));
-                let note_area = Rect::new(area.x, area.y + area.height - 1, area.width, 1);
-                frame.render_widget(note_para, note_area);
-            }
         }
     }
 
@@ -344,12 +448,7 @@ impl DropdownSelector {
                 }
                 (KeyModifiers::NONE, KeyCode::Enter) => {
                     self.select_provider(self.provider_index);
-                    if self.needs_api_key() {
-                        self.show_api_key_prompt = true;
-                        Some(DropdownAction::NeedsApiKey)
-                    } else {
-                        Some(DropdownAction::ProviderSelected)
-                    }
+                    Some(DropdownAction::ProviderSelected)
                 }
                 (KeyModifiers::NONE, KeyCode::Esc) => {
                     self.state = DropdownState::Closed;
@@ -378,12 +477,30 @@ impl DropdownSelector {
                 }
                 (KeyModifiers::NONE, KeyCode::Enter) => {
                     self.select_model(self.model_index);
-                    let (p, m) = self.confirm_selection();
-                    Some(DropdownAction::Confirmed(p, m))
+                    match self.confirm_selection() {
+                        Some((p, m)) => Some(DropdownAction::Confirmed(p, m)),
+                        None => Some(DropdownAction::NeedsApiKey),
+                    }
                 }
                 (KeyModifiers::NONE, KeyCode::Esc) | (KeyModifiers::NONE, KeyCode::Left) => {
                     self.state = DropdownState::ProviderSelected;
                     Some(DropdownAction::BackToProviders)
+                }
+                _ => None,
+            },
+            DropdownState::ApiKeyInput => match (key.modifiers, key.code) {
+                (KeyModifiers::NONE, KeyCode::Enter) => {
+                    // User confirms they've set the API key
+                    match self.confirm_api_key_set() {
+                        Some((p, m)) => Some(DropdownAction::Confirmed(p, m)),
+                        None => Some(DropdownAction::Close),
+                    }
+                }
+                (KeyModifiers::NONE, KeyCode::Esc) => {
+                    self.state = DropdownState::Closed;
+                    self.pending_provider = None;
+                    self.pending_model = None;
+                    Some(DropdownAction::Close)
                 }
                 _ => None,
             },

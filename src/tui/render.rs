@@ -60,15 +60,15 @@ pub fn render(frame: &mut Frame, app: &App) {
         2 => render_kanban_tab(frame, chunks[2], app, &colors),
         3 => render_settings_tab(frame, chunks[2], app, &colors),
         _ => {
-            // Default to chat tab
+            // Always render chat underneath for context
             render_status_bar(frame, chunks[1], app, &colors);
             match app.mode {
+                Mode::ProviderSelect => render_chat(frame, chunks[2], app, &colors),
                 Mode::Normal => render_chat(frame, chunks[2], app, &colors),
                 Mode::Help => render_help(frame, chunks[2], app, &colors),
                 Mode::Editing => render_editor(frame, chunks[2], app, &colors),
                 Mode::Review => render_review(frame, chunks[2], app, &colors),
                 Mode::Command => render_command_palette(frame, chunks[2], app, &colors),
-                Mode::ProviderSelect => render_provider_select(frame, chunks[2], app, &colors),
             }
         }
     }
@@ -78,27 +78,42 @@ pub fn render(frame: &mut Frame, app: &App) {
         render_input(frame, chunks[3], app, &colors);
     }
 
-    // Render dropdown overlay if active
+    // Render dropdown as a SINGLE centered modal overlay — only when active
     if matches!(app.mode, Mode::ProviderSelect) {
         render_dropdown_overlay(frame, app, &colors);
     }
 }
 
-/// Render the dropdown overlay for provider/model selection
+/// Render the dropdown overlay for provider/model selection — single render only
 fn render_dropdown_overlay(
     frame: &mut Frame,
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Create a centered modal area for dropdown
-    let area = center_rect(60, 20, frame.area());
-    let bg = Block::default()
-        .style(Style::default().bg(Color::Black).fg(Color::White))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    // Dim / darken the background by drawing a translucent block
+    let full = frame.area();
+    let dim_block = Block::default()
+        .style(Style::default().bg(colors.background));
+    frame.render_widget(dim_block, full);
 
-    frame.render_widget(bg, area);
-    app.dropdown.render(frame, area, true);
+    // Centered modal — width 58 cols, height adapts to content
+    let area = center_rect(58, 18, frame.area());
+
+    // Outer modal shell — themed
+    let modal_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(colors.accent))
+        .style(Style::default().bg(colors.background).fg(colors.foreground));
+    frame.render_widget(modal_block, area);
+
+    // Inner area with 1-cell padding
+    let inner = Rect::new(
+        area.x + 1,
+        area.y + 1,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    );
+    app.dropdown.render(frame, inner, colors);
 }
 
 /// Center a rect within another rect
@@ -217,8 +232,32 @@ fn render_input(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Show provider/model in the input area
-    let provider_text = format!("[{}:{}] ", app.session.provider, app.session.model);
+    // Show provider/model in the input title
+    let provider_text = format!("[{}:{}]", app.session.provider, app.session.model);
+
+    // Slash command suggestion hint
+    let suggestion = if app.input.starts_with('/') && app.input.len() > 1 {
+        let partial = app.input[1..].to_lowercase();
+        let commands = [
+            "help", "clear", "quit", "exit", "provider", "model",
+            "theme", "session", "config", "status", "version", "mode",
+            "commit", "review", "test",
+        ];
+        commands
+            .iter()
+            .find(|c| c.starts_with(partial.as_str()) && **c != partial.as_str())
+            .map(|c| format!("  Tab→ /{}", c))
+            .unwrap_or_default()
+    } else if app.input.is_empty() {
+        "  type / for commands, p for providers".to_string()
+    } else {
+        String::new()
+    };
+
+    let title_line = Line::from(vec![
+        Span::styled(format!(" {} ", provider_text), Style::default().fg(colors.accent)),
+        Span::styled(suggestion, Style::default().fg(colors.muted)),
+    ]);
 
     let input = Paragraph::new(app.input.as_str())
         .style(Style::default().fg(colors.foreground).bg(colors.background))
@@ -226,11 +265,7 @@ fn render_input(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border))
-                .title(Span::styled(
-                    provider_text,
-                    Style::default().fg(colors.accent),
-                ))
-                .title_style(Style::default().fg(colors.accent)),
+                .title(title_line),
         );
 
     frame.render_widget(input, area);
@@ -367,15 +402,8 @@ fn render_command_palette(
     frame.render_widget(paragraph, area);
 }
 
-/// Render provider/model selection
-fn render_provider_select(
-    frame: &mut Frame,
-    area: Rect,
-    app: &App,
-    colors: &crate::config::themes::RatatuiColors,
-) {
-    app.dropdown.render(frame, area, true);
-}
+// render_provider_select removed — dropdown is now rendered exclusively
+// through render_dropdown_overlay as a single centered modal.
 
 /// Render files tab
 fn render_files_tab(
