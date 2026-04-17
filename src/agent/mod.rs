@@ -7,6 +7,7 @@ mod executor;
 mod parser;
 mod tools;
 
+pub use crate::router::{route, RouterConfig, RoutingDecision};
 pub use executor::{run_agentic, AgentExecutor};
 pub use parser::parse_tool_calls;
 pub use tools::{Tool, ToolCall, ToolResult};

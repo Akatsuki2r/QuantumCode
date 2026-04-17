@@ -26,10 +26,11 @@ pub fn handle_events(app: &mut App) -> Result<bool> {
 
 /// Handle keyboard events
 fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
-    // Global shortcuts
+    // Global shortcuts — always fire regardless of mode
     match (key.modifiers, key.code) {
         // Quit
         (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+            app.dropdown.close();
             app.quit();
             return Ok(true);
         }
@@ -49,11 +50,51 @@ fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bo
             return Ok(false);
         }
 
-        // Escape - return to normal mode
+        // Open provider selector — immediately show provider list
+        (KeyModifiers::NONE, KeyCode::Char('p')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.dropdown.open();
+            app.mode = Mode::ProviderSelect;
+            return Ok(false);
+        }
+
+        // Escape — close dropdown or return to normal
         (KeyModifiers::NONE, KeyCode::Esc) => {
-            if app.mode != Mode::Normal {
+            if matches!(app.mode, Mode::ProviderSelect) {
+                app.dropdown.close();
+                app.mode = Mode::Normal;
+            } else if app.mode != Mode::Normal {
                 app.mode = Mode::Normal;
             }
+            return Ok(false);
+        }
+
+        // Tab switching (only when not in provider select)
+        (KeyModifiers::NONE, KeyCode::Left) | (KeyModifiers::NONE, KeyCode::Right)
+            if !matches!(app.mode, Mode::ProviderSelect) =>
+        {
+            if key.code == KeyCode::Left {
+                app.tab_bar.previous();
+            } else {
+                app.tab_bar.next();
+            }
+            return Ok(false);
+        }
+
+        // Number keys for direct tab access (only outside dropdown)
+        (KeyModifiers::NONE, KeyCode::Char('1')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.tab_bar.select(0);
+            return Ok(false);
+        }
+        (KeyModifiers::NONE, KeyCode::Char('2')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.tab_bar.select(1);
+            return Ok(false);
+        }
+        (KeyModifiers::NONE, KeyCode::Char('3')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.tab_bar.select(2);
+            return Ok(false);
+        }
+        (KeyModifiers::NONE, KeyCode::Char('4')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.tab_bar.select(3);
             return Ok(false);
         }
 
@@ -67,6 +108,8 @@ fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bo
         Mode::Editing => handle_editing_mode(app, key),
         Mode::Review => handle_review_mode(app, key),
         Mode::Command => handle_command_mode(app, key),
+        // Dropdown consumes ALL remaining keys when open
+        Mode::ProviderSelect => handle_provider_select_mode(app, key),
     }
 }
 
@@ -85,6 +128,23 @@ fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<
                     app.input.clear();
                     app.cursor_position = 0;
                     // TODO: Send to AI and get response
+                }
+            }
+            Ok(false)
+        }
+
+        // Tab - slash command autocomplete
+        (KeyModifiers::NONE, KeyCode::Tab) => {
+            if app.input.starts_with('/') && app.input.len() > 1 {
+                let partial = &app.input[1..].to_lowercase();
+                let commands = [
+                    "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
+                    "config", "status", "version", "mode", "commit", "review", "test",
+                ];
+                // Find the first command that starts with the partial
+                if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
+                    app.input = format!("/{}", matched);
+                    app.cursor_position = app.input.len();
                 }
             }
             Ok(false)
@@ -139,12 +199,6 @@ fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<
         // End
         (KeyModifiers::NONE, KeyCode::End) => {
             app.cursor_position = app.input.len();
-            Ok(false)
-        }
-
-        // Tab - autocomplete (TODO)
-        (KeyModifiers::NONE, KeyCode::Tab) => {
-            // TODO: Implement autocomplete
             Ok(false)
         }
 
@@ -452,5 +506,34 @@ fn handle_command_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result
             Ok(false)
         }
         _ => Ok(false),
+    }
+}
+
+/// Handle provider/model selection mode
+fn handle_provider_select_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
+    use crate::tui::widgets::DropdownAction;
+
+    match app.dropdown.handle_key(key) {
+        Some(DropdownAction::Confirmed(provider, model)) => {
+            app.session.provider = provider.clone();
+            app.session.model = model.clone();
+            app.dropdown.close();
+            app.mode = Mode::Normal;
+            app.add_message("system", &format!("✓ Switched to {} — {}", provider, model));
+            Ok(false)
+        }
+        Some(DropdownAction::Close) => {
+            app.dropdown.close();
+            app.mode = Mode::Normal;
+            Ok(false)
+        }
+        Some(DropdownAction::NeedsApiKey) => {
+            // Dropdown transitions itself to ApiKeyInput state; stay in ProviderSelect
+            Ok(false)
+        }
+        Some(DropdownAction::ProviderSelected) => Ok(false),
+        Some(DropdownAction::BackToProviders) => Ok(false),
+        Some(DropdownAction::Navigate) | Some(DropdownAction::OpenProviders) => Ok(false),
+        None => Ok(false),
     }
 }

@@ -1977,6 +1977,7 @@ dependencies = [
  "dirs",
  "futures",
  "git2",
+ "lazy_static",
  "predicates",
  "ratatui 0.30.0",
  "regex",
