@@ -10,7 +10,7 @@
 
 *Local-first • Multi-provider • High-performance • Mode-aware*
 
-[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Providers](#ai-providers)
+[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Providers](#ai-providers) • [Documentation](./docs/)
 
 </div>
 
@@ -18,7 +18,7 @@
 
 ## What is Quantumn Code?
 
-Quantumn Code is a local-first, high-performance coding assistant that runs in your terminal. Inspired by Claude Code, it provides intelligent code assistance through multiple AI backends while prioritizing speed, privacy, and developer experience.
+Quantumn Code is a local-first, high-performance coding assistant that runs in your terminal and heavily optimized for low end machines. Inspired by Claude Code, it provides intelligent code assistance through multiple AI backends while prioritizing speed, privacy, and developer experience.
 
 **Key Principles:**
 - **Local-First**: Works offline with Ollama or llama.cpp - no cloud required
@@ -593,9 +593,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Quantumn Code** - *Your AI coding companion, running locally*
+**Quantumn Code** - *For a light speed workflow*
 
-Made with Rust by [NahanoMark](https://github.com/Akatsuki2r)
+Made by [NahanoMark](https://github.com/Akatsuki2r)
 
 [GitHub](https://github.com/Akatsuki2r/QuantumCode) • [Issues](https://github.com/Akatsuki2r/QuantumCode/issues) • [Discussions](https://github.com/Akatsuki2r/QuantumCode/discussions)
 
