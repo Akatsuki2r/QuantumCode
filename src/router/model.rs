@@ -73,8 +73,14 @@ mod tests {
         let config = RouterConfig::default();
 
         // Heavy tasks need Capable
-        assert_eq!(pick_model_tier(Complexity::Heavy, Intent::Read, AgentMode::Chat, &config), ModelTier::Capable);
-        assert_eq!(pick_model_tier(Complexity::Complex, Intent::Read, AgentMode::Chat, &config), ModelTier::Capable);
+        assert_eq!(
+            pick_model_tier(Complexity::Heavy, Intent::Read, AgentMode::Chat, &config),
+            ModelTier::Capable
+        );
+        assert_eq!(
+            pick_model_tier(Complexity::Complex, Intent::Read, AgentMode::Chat, &config),
+            ModelTier::Capable
+        );
     }
 
     #[test]
@@ -82,8 +88,14 @@ mod tests {
         let config = RouterConfig::default();
 
         // Plan/Design intent gets Standard
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Plan, AgentMode::Chat, &config), ModelTier::Standard);
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Design, AgentMode::Chat, &config), ModelTier::Standard);
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Plan, AgentMode::Chat, &config),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Design, AgentMode::Chat, &config),
+            ModelTier::Standard
+        );
     }
 
     #[test]
@@ -91,8 +103,14 @@ mod tests {
         let config = RouterConfig::default();
 
         // Review/Debug get Standard
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Review, AgentMode::Chat, &config), ModelTier::Standard);
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Debug, AgentMode::Chat, &config), ModelTier::Standard);
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Review, AgentMode::Chat, &config),
+            ModelTier::Standard
+        );
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Debug, AgentMode::Chat, &config),
+            ModelTier::Standard
+        );
     }
 
     #[test]
@@ -100,8 +118,14 @@ mod tests {
         let config = RouterConfig::default();
 
         // Simple tasks get Fast (or Local if prefer_local)
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Read, AgentMode::Chat, &config), ModelTier::Fast);
-        assert_eq!(pick_model_tier(Complexity::Trivial, Intent::Read, AgentMode::Chat, &config), ModelTier::Fast);
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Read, AgentMode::Chat, &config),
+            ModelTier::Fast
+        );
+        assert_eq!(
+            pick_model_tier(Complexity::Trivial, Intent::Read, AgentMode::Chat, &config),
+            ModelTier::Fast
+        );
     }
 
     #[test]
@@ -109,15 +133,27 @@ mod tests {
         let mut config = RouterConfig::default();
         config.prefer_local = true;
 
-        assert_eq!(pick_model_tier(Complexity::Simple, Intent::Read, AgentMode::Chat, &config), ModelTier::Local);
+        assert_eq!(
+            pick_model_tier(Complexity::Simple, Intent::Read, AgentMode::Chat, &config),
+            ModelTier::Local
+        );
     }
 
     #[test]
     fn test_get_model_for_tier() {
         assert_eq!(get_model_for_tier(ModelTier::Local), "llama3.2:latest");
-        assert_eq!(get_model_for_tier(ModelTier::Fast), "claude-haiku-4-20250514");
-        assert_eq!(get_model_for_tier(ModelTier::Standard), "claude-sonnet-4-20250514");
-        assert_eq!(get_model_for_tier(ModelTier::Capable), "claude-opus-4-20250514");
+        assert_eq!(
+            get_model_for_tier(ModelTier::Fast),
+            "claude-haiku-4-20250514"
+        );
+        assert_eq!(
+            get_model_for_tier(ModelTier::Standard),
+            "claude-sonnet-4-20250514"
+        );
+        assert_eq!(
+            get_model_for_tier(ModelTier::Capable),
+            "claude-opus-4-20250514"
+        );
     }
 
     #[test]

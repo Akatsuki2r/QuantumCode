@@ -249,8 +249,14 @@ impl DropdownSelector {
     /// Confirm API key was set (user will set it externally)
     pub fn confirm_api_key_set(&mut self) -> Option<(String, String)> {
         self.state = DropdownState::Closed;
-        let provider = self.pending_provider.take().or_else(|| self.selected_provider.clone())?;
-        let model = self.pending_model.take().or_else(|| self.selected_model.clone())?;
+        let provider = self
+            .pending_provider
+            .take()
+            .or_else(|| self.selected_provider.clone())?;
+        let model = self
+            .pending_model
+            .take()
+            .or_else(|| self.selected_model.clone())?;
         Some((provider, model))
     }
 
@@ -349,11 +355,12 @@ impl DropdownSelector {
                 } else {
                     "         "
                 };
-                let cursor = if i == self.provider_index { "▶ " } else { "  " };
-                let content = format!(
-                    "{}{:<24}{}{}",
-                    cursor, p.display_name, api_badge, icon
-                );
+                let cursor = if i == self.provider_index {
+                    "▶ "
+                } else {
+                    "  "
+                };
+                let content = format!("{}{:<24}{}{}", cursor, p.display_name, api_badge, icon);
 
                 let style = if i == self.provider_index {
                     Style::default().fg(colors.accent).bold()
@@ -392,10 +399,7 @@ impl DropdownSelector {
                         Style::default().fg(colors.foreground)
                     };
 
-                    ListItem::new(Line::from(Span::styled(
-                        format!("{}{}", cursor, m),
-                        style,
-                    )))
+                    ListItem::new(Line::from(Span::styled(format!("{}{}", cursor, m), style)))
                 })
                 .collect();
 

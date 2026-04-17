@@ -3,14 +3,15 @@
 //! Comprehensive tests for the 7-layer router pipeline.
 
 use crate::router::{
-    route, RouterConfig, Intent, Complexity, AgentMode, ModelTier,
-    ToolPolicy, ContextBudget, MemoryPolicy,
     analyzer::{classify_intent, score_complexity},
-    mode::pick_mode,
-    model::pick_model_tier,
-    tools::pick_tools,
     context::pick_budget,
     memory::pick_memory_policy,
+    mode::pick_mode,
+    model::pick_model_tier,
+    route,
+    tools::pick_tools,
+    AgentMode, Complexity, ContextBudget, Intent, MemoryPolicy, ModelTier, RouterConfig,
+    ToolPolicy,
 };
 
 // =============================================================================
@@ -118,7 +119,10 @@ mod intent_tests {
     fn test_plan_intent() {
         assert_eq!(classify_intent("plan the refactor"), Intent::Plan);
         assert_eq!(classify_intent("design the API"), Intent::Plan);
-        assert_eq!(classify_intent("architecture for microservices"), Intent::Plan);
+        assert_eq!(
+            classify_intent("architecture for microservices"),
+            Intent::Plan
+        );
     }
 
     #[test]
@@ -241,46 +245,88 @@ mod mode_tests {
     fn test_chat_mode_selection() {
         assert_eq!(pick_mode(Intent::Chat, Complexity::Simple), AgentMode::Chat);
         assert_eq!(pick_mode(Intent::Help, Complexity::Simple), AgentMode::Chat);
-        assert_eq!(pick_mode(Intent::Explain, Complexity::Simple), AgentMode::Chat);
+        assert_eq!(
+            pick_mode(Intent::Explain, Complexity::Simple),
+            AgentMode::Chat
+        );
     }
 
     #[test]
     fn test_review_mode_for_complex_reads() {
-        assert_eq!(pick_mode(Intent::Read, Complexity::Complex), AgentMode::Review);
-        assert_eq!(pick_mode(Intent::Explain, Complexity::Complex), AgentMode::Review);
+        assert_eq!(
+            pick_mode(Intent::Read, Complexity::Complex),
+            AgentMode::Review
+        );
+        assert_eq!(
+            pick_mode(Intent::Explain, Complexity::Complex),
+            AgentMode::Review
+        );
     }
 
     #[test]
     fn test_build_mode_selection() {
-        assert_eq!(pick_mode(Intent::Write, Complexity::Simple), AgentMode::Build);
-        assert_eq!(pick_mode(Intent::Edit, Complexity::Simple), AgentMode::Build);
-        assert_eq!(pick_mode(Intent::Delete, Complexity::Simple), AgentMode::Build);
-        assert_eq!(pick_mode(Intent::Bash, Complexity::Simple), AgentMode::Build);
+        assert_eq!(
+            pick_mode(Intent::Write, Complexity::Simple),
+            AgentMode::Build
+        );
+        assert_eq!(
+            pick_mode(Intent::Edit, Complexity::Simple),
+            AgentMode::Build
+        );
+        assert_eq!(
+            pick_mode(Intent::Delete, Complexity::Simple),
+            AgentMode::Build
+        );
+        assert_eq!(
+            pick_mode(Intent::Bash, Complexity::Simple),
+            AgentMode::Build
+        );
         assert_eq!(pick_mode(Intent::Git, Complexity::Simple), AgentMode::Build);
     }
 
     #[test]
     fn test_review_mode_selection() {
-        assert_eq!(pick_mode(Intent::Grep, Complexity::Simple), AgentMode::Review);
-        assert_eq!(pick_mode(Intent::Glob, Complexity::Simple), AgentMode::Review);
-        assert_eq!(pick_mode(Intent::Find, Complexity::Simple), AgentMode::Review);
-        assert_eq!(pick_mode(Intent::Review, Complexity::Simple), AgentMode::Review);
+        assert_eq!(
+            pick_mode(Intent::Grep, Complexity::Simple),
+            AgentMode::Review
+        );
+        assert_eq!(
+            pick_mode(Intent::Glob, Complexity::Simple),
+            AgentMode::Review
+        );
+        assert_eq!(
+            pick_mode(Intent::Find, Complexity::Simple),
+            AgentMode::Review
+        );
+        assert_eq!(
+            pick_mode(Intent::Review, Complexity::Simple),
+            AgentMode::Review
+        );
     }
 
     #[test]
     fn test_debug_mode_selection() {
-        assert_eq!(pick_mode(Intent::Debug, Complexity::Simple), AgentMode::Debug);
+        assert_eq!(
+            pick_mode(Intent::Debug, Complexity::Simple),
+            AgentMode::Debug
+        );
     }
 
     #[test]
     fn test_plan_mode_selection() {
         assert_eq!(pick_mode(Intent::Plan, Complexity::Simple), AgentMode::Plan);
-        assert_eq!(pick_mode(Intent::Design, Complexity::Simple), AgentMode::Plan);
+        assert_eq!(
+            pick_mode(Intent::Design, Complexity::Simple),
+            AgentMode::Plan
+        );
     }
 
     #[test]
     fn test_unknown_intent_mode() {
-        assert_eq!(pick_mode(Intent::Unknown, Complexity::Simple), AgentMode::Chat);
+        assert_eq!(
+            pick_mode(Intent::Unknown, Complexity::Simple),
+            AgentMode::Chat
+        );
     }
 }
 
@@ -430,33 +476,66 @@ mod context_budget_tests {
 
     #[test]
     fn test_minimal_budget_for_trivial() {
-        assert_eq!(pick_budget(Complexity::Trivial, AgentMode::Chat), ContextBudget::Minimal);
-        assert_eq!(pick_budget(Complexity::Simple, AgentMode::Chat), ContextBudget::Minimal);
+        assert_eq!(
+            pick_budget(Complexity::Trivial, AgentMode::Chat),
+            ContextBudget::Minimal
+        );
+        assert_eq!(
+            pick_budget(Complexity::Simple, AgentMode::Chat),
+            ContextBudget::Minimal
+        );
     }
 
     #[test]
     fn test_chat_always_minimal() {
-        assert_eq!(pick_budget(Complexity::Heavy, AgentMode::Chat), ContextBudget::Minimal);
+        assert_eq!(
+            pick_budget(Complexity::Heavy, AgentMode::Chat),
+            ContextBudget::Minimal
+        );
     }
 
     #[test]
     fn test_plan_mode_gets_relevant() {
-        assert_eq!(pick_budget(Complexity::Trivial, AgentMode::Plan), ContextBudget::Relevant);
-        assert_eq!(pick_budget(Complexity::Complex, AgentMode::Plan), ContextBudget::Standard);
+        assert_eq!(
+            pick_budget(Complexity::Trivial, AgentMode::Plan),
+            ContextBudget::Relevant
+        );
+        assert_eq!(
+            pick_budget(Complexity::Complex, AgentMode::Plan),
+            ContextBudget::Standard
+        );
     }
 
     #[test]
     fn test_review_mode_gets_relevant() {
-        assert_eq!(pick_budget(Complexity::Trivial, AgentMode::Review), ContextBudget::Relevant);
-        assert_eq!(pick_budget(Complexity::Heavy, AgentMode::Review), ContextBudget::Comprehensive);
+        assert_eq!(
+            pick_budget(Complexity::Trivial, AgentMode::Review),
+            ContextBudget::Relevant
+        );
+        assert_eq!(
+            pick_budget(Complexity::Heavy, AgentMode::Review),
+            ContextBudget::Comprehensive
+        );
     }
 
     #[test]
     fn test_build_mode_uses_base() {
-        assert_eq!(pick_budget(Complexity::Simple, AgentMode::Build), ContextBudget::Minimal);
-        assert_eq!(pick_budget(Complexity::Moderate, AgentMode::Build), ContextBudget::Relevant);
-        assert_eq!(pick_budget(Complexity::Complex, AgentMode::Build), ContextBudget::Standard);
-        assert_eq!(pick_budget(Complexity::Heavy, AgentMode::Build), ContextBudget::Comprehensive);
+        assert_eq!(
+            pick_budget(Complexity::Simple, AgentMode::Build),
+            ContextBudget::Minimal
+        );
+        assert_eq!(
+            pick_budget(Complexity::Moderate, AgentMode::Build),
+            ContextBudget::Relevant
+        );
+        assert_eq!(
+            pick_budget(Complexity::Complex, AgentMode::Build),
+            ContextBudget::Standard
+        );
+        assert_eq!(
+            pick_budget(Complexity::Heavy, AgentMode::Build),
+            ContextBudget::Comprehensive
+        );
     }
 
     #[test]
@@ -478,28 +557,46 @@ mod memory_policy_tests {
 
     #[test]
     fn test_no_memory_for_trivial() {
-        assert_eq!(pick_memory_policy(Intent::Read, Complexity::Trivial, AgentMode::Chat), MemoryPolicy::None);
+        assert_eq!(
+            pick_memory_policy(Intent::Read, Complexity::Trivial, AgentMode::Chat),
+            MemoryPolicy::None
+        );
     }
 
     #[test]
     fn test_no_memory_for_simple_chat() {
-        assert_eq!(pick_memory_policy(Intent::Read, Complexity::Simple, AgentMode::Chat), MemoryPolicy::None);
+        assert_eq!(
+            pick_memory_policy(Intent::Read, Complexity::Simple, AgentMode::Chat),
+            MemoryPolicy::None
+        );
     }
 
     #[test]
     fn test_recent_for_plan_mode() {
-        assert_eq!(pick_memory_policy(Intent::Plan, Complexity::Simple, AgentMode::Plan), MemoryPolicy::Recent);
+        assert_eq!(
+            pick_memory_policy(Intent::Plan, Complexity::Simple, AgentMode::Plan),
+            MemoryPolicy::Recent
+        );
     }
 
     #[test]
     fn test_relevant_for_review_debug() {
-        assert_eq!(pick_memory_policy(Intent::Review, Complexity::Simple, AgentMode::Review), MemoryPolicy::Relevant);
-        assert_eq!(pick_memory_policy(Intent::Debug, Complexity::Complex, AgentMode::Debug), MemoryPolicy::Relevant);
+        assert_eq!(
+            pick_memory_policy(Intent::Review, Complexity::Simple, AgentMode::Review),
+            MemoryPolicy::Relevant
+        );
+        assert_eq!(
+            pick_memory_policy(Intent::Debug, Complexity::Complex, AgentMode::Debug),
+            MemoryPolicy::Relevant
+        );
     }
 
     #[test]
     fn test_full_for_complex_build() {
-        assert_eq!(pick_memory_policy(Intent::Write, Complexity::Complex, AgentMode::Build), MemoryPolicy::Full);
+        assert_eq!(
+            pick_memory_policy(Intent::Write, Complexity::Complex, AgentMode::Build),
+            MemoryPolicy::Full
+        );
     }
 }
 
@@ -540,7 +637,9 @@ mod routing_tests {
         assert_eq!(decision.intent, Intent::Plan);
         assert_eq!(decision.mode, AgentMode::Plan);
         // Complex architecture plans may escalate to Capable tier
-        assert!(decision.model_tier == ModelTier::Standard || decision.model_tier == ModelTier::Capable);
+        assert!(
+            decision.model_tier == ModelTier::Standard || decision.model_tier == ModelTier::Capable
+        );
         assert!(!decision.tools.is_tool_allowed("Write"));
     }
 

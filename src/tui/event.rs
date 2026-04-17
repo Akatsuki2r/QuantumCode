@@ -138,9 +138,8 @@ fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<
             if app.input.starts_with('/') && app.input.len() > 1 {
                 let partial = &app.input[1..].to_lowercase();
                 let commands = [
-                    "help", "clear", "quit", "exit", "provider", "model",
-                    "theme", "session", "config", "status", "version", "mode",
-                    "commit", "review", "test",
+                    "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
+                    "config", "status", "version", "mode", "commit", "review", "test",
                 ];
                 // Find the first command that starts with the partial
                 if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
@@ -520,10 +519,7 @@ fn handle_provider_select_mode(app: &mut App, key: crossterm::event::KeyEvent) -
             app.session.model = model.clone();
             app.dropdown.close();
             app.mode = Mode::Normal;
-            app.add_message(
-                "system",
-                &format!("✓ Switched to {} — {}", provider, model),
-            );
+            app.add_message("system", &format!("✓ Switched to {} — {}", provider, model));
             Ok(false)
         }
         Some(DropdownAction::Close) => {

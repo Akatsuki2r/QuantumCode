@@ -92,8 +92,7 @@ fn render_dropdown_overlay(
 ) {
     // Dim / darken the background by drawing a translucent block
     let full = frame.area();
-    let dim_block = Block::default()
-        .style(Style::default().bg(colors.background));
+    let dim_block = Block::default().style(Style::default().bg(colors.background));
     frame.render_widget(dim_block, full);
 
     // Centered modal — width 58 cols, height adapts to content
@@ -239,9 +238,8 @@ fn render_input(
     let suggestion = if app.input.starts_with('/') && app.input.len() > 1 {
         let partial = app.input[1..].to_lowercase();
         let commands = [
-            "help", "clear", "quit", "exit", "provider", "model",
-            "theme", "session", "config", "status", "version", "mode",
-            "commit", "review", "test",
+            "help", "clear", "quit", "exit", "provider", "model", "theme", "session", "config",
+            "status", "version", "mode", "commit", "review", "test",
         ];
         commands
             .iter()
@@ -255,7 +253,10 @@ fn render_input(
     };
 
     let title_line = Line::from(vec![
-        Span::styled(format!(" {} ", provider_text), Style::default().fg(colors.accent)),
+        Span::styled(
+            format!(" {} ", provider_text),
+            Style::default().fg(colors.accent),
+        ),
         Span::styled(suggestion, Style::default().fg(colors.muted)),
     ]);
 
