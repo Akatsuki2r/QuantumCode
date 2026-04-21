@@ -242,10 +242,7 @@ async fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> R
                         Err(e) => {
                             app.debug_log(&format!("AI Error: {}", e));
                             tracing::error!(target: "chat_flow", "AI request failed: {}", e);
-                            app.add_message(
-                                "system",
-                                &format!("[ERROR] AI request failed: {}", e),
-                            );
+                            app.add_message("system", &format!("[ERROR] AI request failed: {}", e));
                             app.set_status(Some("[ERROR] Failed to get response".to_string()));
                         }
                     }
@@ -260,7 +257,8 @@ async fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> R
                 let partial = &app.input[1..].to_lowercase();
                 let commands = [
                     "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
-                    "config", "status", "version", "mode", "commit", "review", "test", "router", "ollama",
+                    "config", "status", "version", "mode", "commit", "review", "test", "router",
+                    "ollama",
                 ];
                 // Find the first command that starts with the partial
                 if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
@@ -354,7 +352,7 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
 
     tracing::info!(target: "command_exec", "Executing command: /{}", command);
     app.debug_log(&format!("Command Fired: /{}", command));
-    
+
     let result = match *command {
         "help" | "h" | "?" => {
             app.mode = Mode::Help;

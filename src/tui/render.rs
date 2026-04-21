@@ -263,12 +263,10 @@ fn render_input(
     // Show provider/model in the input title
     let provider_text = format!("[{}:{}]", app.session.provider, app.session.model);
 
-    let title_line = Line::from(vec![
-        Span::styled(
-            format!(" {} ", provider_text),
-            Style::default().fg(colors.accent),
-        ),
-    ]);
+    let title_line = Line::from(vec![Span::styled(
+        format!(" {} ", provider_text),
+        Style::default().fg(colors.accent),
+    )]);
 
     let input = Paragraph::new(app.input.as_str())
         .style(Style::default().fg(colors.foreground).bg(colors.background))
@@ -525,9 +523,15 @@ fn render_files_tab(
         .highlight_style(Style::default().bg(colors.secondary).fg(colors.background));
 
     if app.session.files.is_empty() {
-        let empty = Paragraph::new("\n  No files in context.\n  Type '/add <file>' to include code for AI analysis.")
-            .style(Style::default().fg(colors.muted))
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(colors.border)));
+        let empty = Paragraph::new(
+            "\n  No files in context.\n  Type '/add <file>' to include code for AI analysis.",
+        )
+        .style(Style::default().fg(colors.muted))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.border)),
+        );
         frame.render_widget(empty, area);
     } else {
         frame.render_widget(list, area);
@@ -561,7 +565,10 @@ fn render_debug_tab(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border))
-                .title(Span::styled("  DEBUG CONSOLE ", Style::default().fg(colors.accent).bold()))
+                .title(Span::styled(
+                    "  DEBUG CONSOLE ",
+                    Style::default().fg(colors.accent).bold(),
+                ))
                 .padding(Padding::new(1, 1, 0, 0)),
         )
         .style(Style::default().fg(colors.foreground).bg(colors.background))
@@ -578,29 +585,47 @@ fn render_builder_tab(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    let chunks = Layout::horizontal([
-        Constraint::Percentage(70),
-        Constraint::Percentage(30),
-    ]).split(area);
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).split(area);
 
     // Kanban Board in main area
     app.kanban.render(frame, chunks[0]);
 
     // Sidebar for build info
     let info_text = vec![
-        Line::from(Span::styled(" BUILD STATUS ", Style::default().bg(colors.accent).fg(colors.background).bold())),
+        Line::from(Span::styled(
+            " BUILD STATUS ",
+            Style::default()
+                .bg(colors.accent)
+                .fg(colors.background)
+                .bold(),
+        )),
         Line::default(),
-        Line::from(vec![Span::styled(" Mode: ", Style::default().fg(colors.muted)), Span::raw("Build (Agentive)")]),
-        Line::from(vec![Span::styled(" Task: ", Style::default().fg(colors.muted)), Span::raw(app.status.as_deref().unwrap_or("Idle"))]),
+        Line::from(vec![
+            Span::styled(" Mode: ", Style::default().fg(colors.muted)),
+            Span::raw("Build (Agentive)"),
+        ]),
+        Line::from(vec![
+            Span::styled(" Task: ", Style::default().fg(colors.muted)),
+            Span::raw(app.status.as_deref().unwrap_or("Idle")),
+        ]),
         Line::default(),
-        Line::from(Span::styled(" ACTIVE TOOLS ", Style::default().fg(colors.secondary).bold())),
+        Line::from(Span::styled(
+            " ACTIVE TOOLS ",
+            Style::default().fg(colors.secondary).bold(),
+        )),
         Line::from(" • file_read"),
         Line::from(" • file_edit"),
         Line::from(" • shell_exec"),
     ];
 
     let sidebar = Paragraph::new(info_text)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(colors.border)).padding(Padding::new(1, 1, 1, 1)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.border))
+                .padding(Padding::new(1, 1, 1, 1)),
+        )
         .style(Style::default().bg(colors.background));
 
     frame.render_widget(sidebar, chunks[1]);
@@ -618,7 +643,14 @@ fn render_settings_tab(
         Row::new(vec!["Provider", app.session.provider.as_str()]),
         Row::new(vec!["Model", app.session.model.as_str()]),
         Row::new(vec!["Theme", app.settings.ui.theme.as_str()]),
-        Row::new(vec!["Router", if app.router_enabled { "Enabled" } else { "Disabled" }]),
+        Row::new(vec![
+            "Router",
+            if app.router_enabled {
+                "Enabled"
+            } else {
+                "Disabled"
+            },
+        ]),
         Row::new(vec!["Total Tokens", total_tokens_label.as_str()]),
     ];
 

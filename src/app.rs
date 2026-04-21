@@ -160,7 +160,7 @@ impl App {
         if self.debug_logs.len() > 100 {
             self.debug_logs.remove(0);
         }
-        
+
         // Auto-scroll to the bottom
         let last_idx = self.debug_logs.len().saturating_sub(1);
         self.debug_state.select(Some(last_idx));
