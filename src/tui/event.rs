@@ -97,6 +97,10 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
             app.tab_bar.select(3);
             return Ok(false);
         }
+        (KeyModifiers::NONE, KeyCode::Char('5')) if !matches!(app.mode, Mode::ProviderSelect) => {
+            app.tab_bar.select(4);
+            return Ok(false);
+        }
 
         _ => {}
     }
@@ -120,6 +124,17 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
     let provider_name = app.session.provider.clone();
     let model = app.session.model.clone();
 
+    tracing::info!(
+        target: "chat_flow",
+        "Sending to AI: provider={}, model={}, message_count={}, prompt_length={}",
+        provider_name,
+        model,
+        app.session.messages.len(),
+        prompt.len()
+    );
+
+    let start_time = std::time::Instant::now();
+
     // Convert app messages to provider format
     let messages: Vec<Message> = app
         .session
@@ -137,21 +152,43 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
         })
         .collect();
 
+    tracing::debug!(
+        target: "chat_flow",
+        "Converted {} messages to provider format",
+        messages.len()
+    );
+
     // Create appropriate provider and send
-    match provider_name.as_str() {
+    let response = match provider_name.as_str() {
         "ollama" => {
+            tracing::debug!(target: "chat_flow", "Creating Ollama provider with model: {}", model);
             let provider = crate::providers::OllamaProvider::with_model(model);
+            tracing::trace!(target: "chat_flow", "Sending request to Ollama API");
             let response = provider.send(messages).await?;
-            Ok(response)
+            tracing::debug!(target: "chat_flow", "Ollama response received, length: {}", response.len());
+            response
         }
         "anthropic" => {
+            tracing::debug!(target: "chat_flow", "Creating Anthropic provider with model: {}", model);
             let mut provider = crate::providers::AnthropicProvider::new();
             provider.set_model(model);
+            tracing::trace!(target: "chat_flow", "Sending request to Anthropic API");
             let response = provider.send(messages).await?;
-            Ok(response)
+            tracing::debug!(target: "chat_flow", "Anthropic response received, length: {}", response.len());
+            response
         }
-        _ => Err(format!("Unknown provider: {}", provider_name).into()),
-    }
+        _ => return Err(format!("Unknown provider: {}", provider_name).into()),
+    };
+
+    let elapsed = start_time.elapsed();
+    tracing::info!(
+        target: "chat_flow",
+        "AI response received in {:.2?} ({} bytes)",
+        elapsed,
+        response.len()
+    );
+
+    Ok(response)
 }
 
 /// Handle normal mode input (async for AI responses)
@@ -175,27 +212,41 @@ async fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> R
 
                     // Notify user if router selected a different model
                     if app.router_enabled {
-                        app.set_status(Some(format!(
-                            "Router: {} → {} ({})",
+                        let status = format!(
+                            "[ROUTING] {} → {} ({})",
                             app.session.model, selected_model, selected_provider
-                        )));
+                        );
+                        app.set_status(Some(status.clone()));
+                        app.debug_log(&status);
                     }
 
                     // Add user message
                     app.add_message("user", &prompt);
                     app.input.clear();
                     app.cursor_position = 0;
+                    app.debug_log(&format!("Message sent to AI: {}", prompt));
 
-                    // Send to AI and get response
-                    app.set_status(Some("Thinking...".to_string()));
+                    // Send to AI and get response with detailed status updates
+                    app.set_status(Some("[CONNECTING] Contacting AI model...".to_string()));
+
                     match send_to_ai(app, &prompt).await {
                         Ok(response) => {
+                            app.set_status(Some("[RECEIVED] Processing response...".to_string()));
+                            app.debug_log("AI response received successfully");
                             app.add_message("assistant", &response);
-                            app.set_status(None);
+                            app.set_status(Some(format!(
+                                "[COMPLETE] Response from {} ({})",
+                                selected_provider, selected_model
+                            )));
                         }
                         Err(e) => {
-                            app.add_message("system", &format!("Error: {}", e));
-                            app.set_status(None);
+                            app.debug_log(&format!("AI Error: {}", e));
+                            tracing::error!(target: "chat_flow", "AI request failed: {}", e);
+                            app.add_message(
+                                "system",
+                                &format!("[ERROR] AI request failed: {}", e),
+                            );
+                            app.set_status(Some("[ERROR] Failed to get response".to_string()));
                         }
                     }
                 }
@@ -209,7 +260,7 @@ async fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> R
                 let partial = &app.input[1..].to_lowercase();
                 let commands = [
                     "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
-                    "config", "status", "version", "mode", "commit", "review", "test",
+                    "config", "status", "version", "mode", "commit", "review", "test", "router", "ollama",
                 ];
                 // Find the first command that starts with the partial
                 if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
@@ -299,17 +350,23 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
     let parts: Vec<&str> = input[1..].split_whitespace().collect();
     let command = parts.first().unwrap_or(&"");
     let arg = parts.get(1).map(|s| *s);
+    let start = std::time::Instant::now();
 
-    match *command {
+    tracing::info!(target: "command_exec", "Executing command: /{}", command);
+    app.debug_log(&format!("Command Fired: /{}", command));
+    
+    let result = match *command {
         "help" | "h" | "?" => {
             app.mode = Mode::Help;
+            Ok(false)
         }
         "clear" | "c" => {
             app.clear_conversation();
+            Ok(false)
         }
         "quit" | "q" | "exit" => {
             app.quit();
-            return Ok(true);
+            Ok(true)
         }
         "provider" | "p" => {
             if let Some(provider_name) = arg {
@@ -351,6 +408,7 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
 To switch: /provider <provider_name>";
                 app.add_message("system", msg);
             }
+            Ok(false)
         }
         "model" | "m" => {
             if let Some(model) = arg {
@@ -389,6 +447,7 @@ To switch: /provider <provider_name>";
 To switch: /model <model_name>";
                 app.add_message("system", msg);
             }
+            Ok(false)
         }
         "theme" | "t" => {
             if let Some(theme_name) = arg {
@@ -415,6 +474,7 @@ To switch: /model <model_name>";
 To switch: /theme <theme_name>";
                 app.add_message("system", msg);
             }
+            Ok(false)
         }
         "session" | "sess" => {
             match arg {
@@ -448,6 +508,7 @@ To switch: /theme <theme_name>";
                     );
                 }
             }
+            Ok(false)
         }
         "config" | "cfg" => {
             match arg {
@@ -475,6 +536,7 @@ Config file: ~/.config/quantumn-code/config.toml",
                     app.add_message("system", "Unknown config command. Use: show, edit");
                 }
             }
+            Ok(false)
         }
         "ollama" | "o" => {
             // List detected Ollama models with details
@@ -533,6 +595,7 @@ Config file: ~/.config/quantumn-code/config.toml",
 
                 app.add_message("system", &lines.join("\n"));
             }
+            Ok(false)
         }
         "status" | "s" => {
             let status = format!(
@@ -549,10 +612,12 @@ Config file: ~/.config/quantumn-code/config.toml",
                 app.total_tokens()
             );
             app.add_message("system", &status);
+            Ok(false)
         }
         "version" | "v" => {
             let version = env!("CARGO_PKG_VERSION");
             app.add_message("system", &format!("Quantumn Code v{}", version));
+            Ok(false)
         }
         "mode" => {
             if let Some(mode_name) = arg {
@@ -579,6 +644,7 @@ Config file: ~/.config/quantumn-code/config.toml",
             } else {
                 app.add_message("system", "Available modes:\n  /mode plan  - AI plans before implementing\n  /mode build - AI implements directly\n  /mode chat  - Casual conversation");
             }
+            Ok(false)
         }
         "router" | "r" => match arg {
             Some("on") | Some("enable") => {
@@ -587,6 +653,7 @@ Config file: ~/.config/quantumn-code/config.toml",
                     "system",
                     "✓ Router enabled - automatic model switching active",
                 );
+                Ok(false)
             }
             Some("off") | Some("disable") => {
                 app.router_enabled = false;
@@ -594,6 +661,7 @@ Config file: ~/.config/quantumn-code/config.toml",
                     "system",
                     "✓ Router disabled - using manually selected model",
                 );
+                Ok(false)
             }
             Some("status") | Some("s") => {
                 let status = if app.router_enabled {
@@ -622,6 +690,7 @@ Config file: ~/.config/quantumn-code/config.toml",
                     }
                 );
                 app.add_message("system", &msg);
+                Ok(false)
             }
             Some("prefer-local") | Some("pl") => {
                 app.router_config.prefer_local = !app.router_config.prefer_local;
@@ -631,17 +700,32 @@ Config file: ~/.config/quantumn-code/config.toml",
                     "disabled"
                 };
                 app.add_message("system", &format!("✓ Prefer local models: {}", status));
+                Ok(false)
             }
             None => {
                 app.add_message("system", "Router commands:\n  /router on      - Enable automatic model switching\n  /router off     - Disable router, use manual selection\n  /router status  - Show router configuration\n  /router prefer-local - Toggle preference for local models");
+                Ok(false)
             }
             _ => {
                 app.add_message(
                     "system",
                     "Unknown router command. Use: on, off, status, prefer-local",
                 );
+                Ok(false)
             }
         },
+        "commit" => {
+            app.add_message("system", "Commit generation coming soon.");
+            Ok(false)
+        }
+        "review" => {
+            app.add_message("system", "Code review coming soon.");
+            Ok(false)
+        }
+        "test" => {
+            app.add_message("system", "Test runner coming soon.");
+            Ok(false)
+        }
         _ => {
             app.add_message(
                 "system",
@@ -650,10 +734,14 @@ Config file: ~/.config/quantumn-code/config.toml",
                     command
                 ),
             );
+            Ok(false)
         }
-    }
+    };
 
-    Ok(false)
+    let elapsed = start.elapsed();
+    tracing::info!(target: "command_exec", "Command /{} finished in {:?}", command, elapsed);
+    app.debug_log(&format!("Command /{} finished in {:?}", command, elapsed));
+    result
 }
 
 /// Handle help mode

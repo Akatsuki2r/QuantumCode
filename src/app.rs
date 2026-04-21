@@ -8,6 +8,7 @@ use crate::config::themes::Theme;
 use crate::providers::Provider;
 use crate::router::RouterConfig;
 use crate::tui::widgets::{DropdownSelector, KanbanBoard, TabBar};
+use ratatui::widgets::ListState;
 
 /// Current mode of the application
 #[derive(Debug, Clone, PartialEq)]
@@ -105,6 +106,12 @@ pub struct App {
     pub router_config: RouterConfig,
     /// Whether automatic model switching via router is enabled
     pub router_enabled: bool,
+    /// Debug log messages (circular buffer, latest 100)
+    pub debug_logs: Vec<(std::time::Instant, String)>,
+    /// Whether debug console is visible
+    pub debug_visible: bool,
+    /// State for the debug log list (for auto-scrolling)
+    pub debug_state: ListState,
 }
 
 impl App {
@@ -139,7 +146,30 @@ impl App {
             kanban: KanbanBoard::new(),
             router_config: RouterConfig::default(),
             router_enabled: true,
+            debug_logs: Vec::new(),
+            debug_visible: false,
+            debug_state: ListState::default(),
         }
+    }
+
+    /// Add a debug log entry
+    pub fn debug_log(&mut self, message: &str) {
+        use std::time::Instant;
+        self.debug_logs.push((Instant::now(), message.to_string()));
+        // Keep only last 100 entries
+        if self.debug_logs.len() > 100 {
+            self.debug_logs.remove(0);
+        }
+        
+        // Auto-scroll to the bottom
+        let last_idx = self.debug_logs.len().saturating_sub(1);
+        self.debug_state.select(Some(last_idx));
+        tracing::debug!(target: "debug_console", "{}", message);
+    }
+
+    /// Toggle debug console visibility
+    pub fn toggle_debug(&mut self) {
+        self.debug_visible = !self.debug_visible;
     }
 
     /// Route a prompt through the router and automatically select model
@@ -149,6 +179,12 @@ impl App {
 
         if !self.router_enabled {
             // Router disabled, use current selection
+            tracing::debug!(
+                target: "router",
+                "Router disabled, using current selection: provider={}, model={}",
+                self.session.provider,
+                self.session.model
+            );
             return (self.session.provider.clone(), self.session.model.clone());
         }
 
@@ -157,7 +193,24 @@ impl App {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| "/".to_string());
 
+        tracing::debug!(
+            target: "router",
+            "Routing prompt: length={}, cwd={}",
+            prompt.len(),
+            cwd
+        );
+
         let decision = route(prompt, &cwd, &self.router_config);
+
+        tracing::info!(
+            target: "router",
+            "Routing decision: intent={}, complexity={}, mode={}, tier={}, confidence={:.2}",
+            decision.intent.as_str(),
+            decision.complexity.as_str(),
+            decision.mode.as_str(),
+            decision.model_tier.as_str(),
+            decision.confidence
+        );
 
         // Map model tier to actual provider/model
         // Local tier uses discovered Ollama models, others use cloud providers
@@ -178,6 +231,13 @@ impl App {
             crate::router::ModelTier::Standard => "anthropic".to_string(),
             crate::router::ModelTier::Capable => "anthropic".to_string(),
         };
+
+        tracing::info!(
+            target: "router",
+            "Selected: provider={}, model={}",
+            provider,
+            model
+        );
 
         (provider, model)
     }
@@ -242,6 +302,11 @@ impl App {
     /// Set status message
     pub fn set_status(&mut self, status: Option<String>) {
         self.status = status;
+    }
+
+    /// Get status message
+    pub fn get_status(&self) -> Option<&String> {
+        self.status.as_ref()
     }
 
     /// Get total tokens used in session

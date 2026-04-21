@@ -48,6 +48,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         Constraint::Length(1), // Status bar
         Constraint::Min(1),    // Main content
         Constraint::Length(3), // Input
+        Constraint::Length(1), // Suggestion bar
     ])
     .split(frame.area());
 
@@ -57,8 +58,9 @@ pub fn render(frame: &mut Frame, app: &App) {
     // Render based on active tab
     match app.tab_bar.active_index {
         1 => render_files_tab(frame, chunks[2], app, &colors),
-        2 => render_kanban_tab(frame, chunks[2], app, &colors),
-        3 => render_settings_tab(frame, chunks[2], app, &colors),
+        2 => render_builder_tab(frame, chunks[2], app, &colors),
+        3 => render_debug_tab(frame, chunks[2], app, &colors),
+        4 => render_settings_tab(frame, chunks[2], app, &colors),
         _ => {
             // Always render chat underneath for context
             render_status_bar(frame, chunks[1], app, &colors);
@@ -74,8 +76,9 @@ pub fn render(frame: &mut Frame, app: &App) {
     }
 
     // Render input (not on settings tab)
-    if app.tab_bar.active_index != 3 {
+    if app.tab_bar.active_index != 4 {
         render_input(frame, chunks[3], app, &colors);
+        render_suggestions(frame, chunks[4], app, &colors);
     }
 
     // Render dropdown as a SINGLE centered modal overlay — only when active
@@ -141,26 +144,39 @@ fn render_status_bar(
         )
     };
 
+    // Get the current activity status from the app
+    // This shows if the model is [THINKING], [ROUTING], etc.
+    let activity_status = if let Some(status) = app.get_status() {
+        Span::styled(
+            format!(" ◉ {} ", status),
+            Style::default().fg(colors.accent).bold(),
+        )
+    } else {
+        Span::raw("")
+    };
+
     let status = Paragraph::new(Line::from(vec![
         Span::styled(
-            " Quantumn ",
+            " ⚡ QUANTUMN ",
             Style::default()
                 .fg(colors.accent)
                 .bg(colors.background)
                 .bold(),
         ),
         Span::styled(
-            format!(" {} ", app.session.model),
-            Style::default().fg(colors.foreground).bg(colors.background),
+            format!(" 󰘦 {} ", app.session.model),
+            Style::default().fg(colors.foreground),
         ),
         Span::styled(
-            format!(" {} ", app.session.provider),
-            Style::default().fg(colors.muted).bg(colors.background),
+            format!(" ({}) ", app.session.provider),
+            Style::default().fg(colors.muted),
         ),
         router_indicator,
+        activity_status,
+        Span::raw(" | "),
         Span::styled(
-            format!(" {} tokens ", app.total_tokens()),
-            Style::default().fg(colors.info).bg(colors.background),
+            format!(" 󰌓 {} tokens ", app.total_tokens()),
+            Style::default().fg(colors.info),
         ),
         Span::styled(
             match app.mode {
@@ -172,8 +188,8 @@ fn render_status_bar(
                 Mode::ProviderSelect => " SELECT ",
             },
             Style::default()
-                .fg(colors.accent)
-                .bg(colors.background)
+                .fg(colors.background)
+                .bg(colors.accent)
                 .bold(),
         ),
     ]))
@@ -247,30 +263,11 @@ fn render_input(
     // Show provider/model in the input title
     let provider_text = format!("[{}:{}]", app.session.provider, app.session.model);
 
-    // Slash command suggestion hint
-    let suggestion = if app.input.starts_with('/') && app.input.len() > 1 {
-        let partial = app.input[1..].to_lowercase();
-        let commands = [
-            "help", "clear", "quit", "exit", "provider", "model", "theme", "session", "config",
-            "status", "version", "mode", "commit", "review", "test",
-        ];
-        commands
-            .iter()
-            .find(|c| c.starts_with(partial.as_str()) && **c != partial.as_str())
-            .map(|c| format!("  Tab→ /{}", c))
-            .unwrap_or_default()
-    } else if app.input.is_empty() {
-        "  type / for commands, p for providers".to_string()
-    } else {
-        String::new()
-    };
-
     let title_line = Line::from(vec![
         Span::styled(
             format!(" {} ", provider_text),
             Style::default().fg(colors.accent),
         ),
-        Span::styled(suggestion, Style::default().fg(colors.muted)),
     ]);
 
     let input = Paragraph::new(app.input.as_str())
@@ -291,6 +288,78 @@ fn render_input(
         x: cursor_x,
         y: cursor_y,
     });
+}
+
+/// Render the suggestion bar under input
+fn render_suggestions(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    colors: &crate::config::themes::RatatuiColors,
+) {
+    let mut spans = Vec::new();
+
+    if app.input.starts_with('/') {
+        let partial = if app.input.len() > 1 {
+            app.input[1..].to_lowercase()
+        } else {
+            String::new()
+        };
+
+        let commands = [
+            ("help", "show help"),
+            ("clear", "clear chat"),
+            ("quit", "exit app"),
+            ("exit", "exit app"),
+            ("provider", "select AI provider"),
+            ("model", "select AI model"),
+            ("theme", "change TUI theme"),
+            ("session", "manage sessions"),
+            ("config", "app settings"),
+            ("router", "model switching"),
+            ("ollama", "list local models"),
+            ("status", "app diagnostics"),
+            ("version", "show version"),
+            ("mode", "switch behavior"),
+            ("commit", "git commit help"),
+            ("review", "code review"),
+            ("test", "run tests"),
+        ];
+
+        let mut matches: Vec<_> = commands
+            .iter()
+            .filter(|(c, _)| c.starts_with(&partial))
+            .collect();
+
+        if !matches.is_empty() {
+            spans.push(Span::styled(" 󱊖 ", Style::default().fg(colors.accent)));
+            for (i, (cmd, desc)) in matches.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(" • ", Style::default().fg(colors.muted)));
+                }
+                spans.push(Span::styled(
+                    format!("/{}", cmd),
+                    Style::default().fg(colors.foreground).bold(),
+                ));
+                spans.push(Span::styled(
+                    format!(" {}", desc),
+                    Style::default().fg(colors.muted),
+                ));
+            }
+        }
+    } else if app.input.is_empty() {
+        spans.push(Span::styled(
+            " 󰟶 Type / for commands, p for providers, or just chat... ",
+            Style::default().fg(colors.muted).italic(),
+        ));
+    }
+
+    if !spans.is_empty() {
+        let suggestion_bar = Paragraph::new(Line::from(spans))
+            .style(Style::default().bg(colors.background))
+            .alignment(Alignment::Left);
+        frame.render_widget(suggestion_bar, area);
+    }
 }
 
 /// Render help screen
@@ -423,135 +492,147 @@ fn render_command_palette(
 // render_provider_select removed — dropdown is now rendered exclusively
 // through render_dropdown_overlay as a single centered modal.
 
-/// Render files tab
+/// Render files tab with improved styling
 fn render_files_tab(
     frame: &mut Frame,
     area: Rect,
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    let files: Vec<Line> = app
-        .session
-        .files
-        .values()
-        .map(|f| {
-            Line::from(Span::styled(
-                format!("📄 {}", f.path),
-                Style::default().fg(colors.foreground),
-            ))
-        })
-        .collect();
+    let mut items = Vec::new();
+    for (path, file) in &app.session.files {
+        let status = if file.staged { "●" } else { "○" };
+        let style = if file.staged {
+            Style::default().fg(colors.success)
+        } else {
+            Style::default().fg(colors.muted)
+        };
 
-    let files_text = if files.is_empty() {
-        vec![Line::from(Span::styled(
-            "No files in context. Use /add <file> to add files.",
-            Style::default().fg(colors.muted),
-        ))]
-    } else {
-        files
-    };
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!(" {} ", status), style),
+            Span::styled(path.clone(), Style::default().fg(colors.foreground)),
+        ])));
+    }
 
-    let paragraph = Paragraph::new(files_text)
-        .style(Style::default().fg(colors.foreground).bg(colors.background))
+    let list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border))
-                .title(" Files ")
+                .title(" Context Files ")
                 .title_style(Style::default().fg(colors.accent)),
         )
-        .wrap(Wrap { trim: false });
+        .highlight_style(Style::default().bg(colors.secondary).fg(colors.background));
 
-    frame.render_widget(paragraph, area);
+    if app.session.files.is_empty() {
+        let empty = Paragraph::new("\n  No files in context.\n  Type '/add <file>' to include code for AI analysis.")
+            .style(Style::default().fg(colors.muted))
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(colors.border)));
+        frame.render_widget(empty, area);
+    } else {
+        frame.render_widget(list, area);
+    }
 }
 
-/// Render kanban tab
-fn render_kanban_tab(
+/// Render Debug tab to show what's happening under the hood
+fn render_debug_tab(
     frame: &mut Frame,
     area: Rect,
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Header
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(" Kanban Board ", Style::default().fg(colors.accent).bold()),
-        Span::styled(
-            " - Use arrow keys to navigate, Enter to select ",
-            Style::default().fg(colors.muted),
-        ),
-    ]))
-    .style(Style::default().bg(colors.background));
+    let logs: Vec<ListItem> = app
+        .debug_logs
+        .iter()
+        .map(|(time, msg)| {
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(" {:<10} ", format!("{:?}", time.elapsed().as_secs())),
+                    Style::default().fg(colors.muted),
+                ),
+                Span::styled(" » ", Style::default().fg(colors.accent)),
+                Span::raw(msg),
+            ]))
+        })
+        .collect();
 
-    let header_area = Rect::new(area.x, area.y, area.width, 1);
-    frame.render_widget(header, header_area);
+    let list = List::new(logs)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(colors.border))
+                .title(Span::styled("  DEBUG CONSOLE ", Style::default().fg(colors.accent).bold()))
+                .padding(Padding::new(1, 1, 0, 0)),
+        )
+        .style(Style::default().fg(colors.foreground).bg(colors.background))
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
-    // Kanban board
-    let board_area = Rect::new(area.x, area.y + 1, area.width, area.height - 1);
-    app.kanban.render(frame, board_area);
+    // Render with state to enable auto-scrolling
+    frame.render_stateful_widget(list, area, &mut app.debug_state.clone());
 }
 
-/// Render settings tab
+/// Render Builder tab (Enhanced Kanban IDE view)
+fn render_builder_tab(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    colors: &crate::config::themes::RatatuiColors,
+) {
+    let chunks = Layout::horizontal([
+        Constraint::Percentage(70),
+        Constraint::Percentage(30),
+    ]).split(area);
+
+    // Kanban Board in main area
+    app.kanban.render(frame, chunks[0]);
+
+    // Sidebar for build info
+    let info_text = vec![
+        Line::from(Span::styled(" BUILD STATUS ", Style::default().bg(colors.accent).fg(colors.background).bold())),
+        Line::default(),
+        Line::from(vec![Span::styled(" Mode: ", Style::default().fg(colors.muted)), Span::raw("Build (Agentive)")]),
+        Line::from(vec![Span::styled(" Task: ", Style::default().fg(colors.muted)), Span::raw(app.status.as_deref().unwrap_or("Idle"))]),
+        Line::default(),
+        Line::from(Span::styled(" ACTIVE TOOLS ", Style::default().fg(colors.secondary).bold())),
+        Line::from(" • file_read"),
+        Line::from(" • file_edit"),
+        Line::from(" • shell_exec"),
+    ];
+
+    let sidebar = Paragraph::new(info_text)
+        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(colors.border)).padding(Padding::new(1, 1, 1, 1)))
+        .style(Style::default().bg(colors.background));
+
+    frame.render_widget(sidebar, chunks[1]);
+}
+
+/// Render settings tab with improved table layout
 fn render_settings_tab(
     frame: &mut Frame,
     area: Rect,
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    let router_status = if app.router_enabled {
-        "Enabled (Auto-switching)"
-    } else {
-        "Disabled (Manual)"
-    };
-
-    let settings_text = vec![
-        Line::from(Span::styled(
-            "Settings",
-            Style::default().fg(colors.accent).bold(),
-        )),
-        Line::default(),
-        Line::from(format!("Provider: {}", app.session.provider)),
-        Line::from(format!("Model: {}", app.session.model)),
-        Line::from(format!("Theme: {}", app.settings.ui.theme)),
-        Line::from(format!("Router: {}", router_status)),
-        Line::default(),
-        Line::from(Span::styled("API Keys:", Style::default().bold())),
-        Line::from(format!(
-            "  Anthropic: {}",
-            if *app.api_keys.get("anthropic").unwrap_or(&false) {
-                "✓ Set"
-            } else {
-                "✗ Not set"
-            }
-        )),
-        Line::from(format!(
-            "  OpenAI: {}",
-            if *app.api_keys.get("openai").unwrap_or(&false) {
-                "✓ Set"
-            } else {
-                "✗ Not set"
-            }
-        )),
-        Line::default(),
-        Line::from(Span::styled(
-            "Press P to change provider/model",
-            Style::default().fg(colors.muted),
-        )),
-        Line::from(Span::styled(
-            "Use /router to toggle automatic model switching",
-            Style::default().fg(colors.muted),
-        )),
+    let total_tokens_label = app.total_tokens().to_string();
+    let rows = vec![
+        Row::new(vec!["Provider", app.session.provider.as_str()]),
+        Row::new(vec!["Model", app.session.model.as_str()]),
+        Row::new(vec!["Theme", app.settings.ui.theme.as_str()]),
+        Row::new(vec!["Router", if app.router_enabled { "Enabled" } else { "Disabled" }]),
+        Row::new(vec!["Total Tokens", total_tokens_label.as_str()]),
     ];
 
-    let paragraph = Paragraph::new(settings_text)
-        .style(Style::default().fg(colors.foreground).bg(colors.background))
+    let table = Table::new(rows, [Constraint::Length(15), Constraint::Min(20)])
+        .header(Row::new(vec!["Setting", "Value"]).style(Style::default().fg(colors.accent).bold()))
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(colors.border))
-                .title(" Settings ")
-                .title_style(Style::default().fg(colors.accent)),
+                .title(" Configuration ")
+                .title_style(Style::default().fg(colors.accent))
+                .padding(Padding::uniform(1)),
         )
-        .wrap(Wrap { trim: false });
+        .style(Style::default().fg(colors.foreground).bg(colors.background));
 
-    frame.render_widget(paragraph, area);
+    frame.render_widget(table, area);
 }
