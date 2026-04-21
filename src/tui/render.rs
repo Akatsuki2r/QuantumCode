@@ -129,6 +129,18 @@ fn render_status_bar(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
+    let router_indicator = if app.router_enabled {
+        Span::styled(
+            " [AUTO] ",
+            Style::default().fg(colors.success).bg(colors.background),
+        )
+    } else {
+        Span::styled(
+            " [MANUAL] ",
+            Style::default().fg(colors.muted).bg(colors.background),
+        )
+    };
+
     let status = Paragraph::new(Line::from(vec![
         Span::styled(
             " Quantumn ",
@@ -145,6 +157,7 @@ fn render_status_bar(
             format!(" {} ", app.session.provider),
             Style::default().fg(colors.muted).bg(colors.background),
         ),
+        router_indicator,
         Span::styled(
             format!(" {} tokens ", app.total_tokens()),
             Style::default().fg(colors.info).bg(colors.background),
@@ -317,11 +330,15 @@ fn render_help(
         )),
         Line::from("  /help       - Show help"),
         Line::from("  /clear      - Clear conversation"),
-        Line::from("  /model      - Change model"),
+        Line::from("  /model      - List/change models"),
+        Line::from("  /ollama     - List local Ollama models"),
+        Line::from("  /router     - Toggle automatic model switching"),
         Line::from("  /theme      - Change theme"),
+        Line::from("  /provider   - List/change providers"),
         Line::from("  /commit     - Generate commit"),
         Line::from("  /review     - Review code"),
         Line::from("  /test       - Run tests"),
+        Line::from("  /status     - Show status"),
         Line::from("  /quit       - Exit"),
         Line::default(),
         Line::from(Span::styled(
@@ -480,6 +497,12 @@ fn render_settings_tab(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
+    let router_status = if app.router_enabled {
+        "Enabled (Auto-switching)"
+    } else {
+        "Disabled (Manual)"
+    };
+
     let settings_text = vec![
         Line::from(Span::styled(
             "Settings",
@@ -489,6 +512,7 @@ fn render_settings_tab(
         Line::from(format!("Provider: {}", app.session.provider)),
         Line::from(format!("Model: {}", app.session.model)),
         Line::from(format!("Theme: {}", app.settings.ui.theme)),
+        Line::from(format!("Router: {}", router_status)),
         Line::default(),
         Line::from(Span::styled("API Keys:", Style::default().bold())),
         Line::from(format!(
@@ -510,6 +534,10 @@ fn render_settings_tab(
         Line::default(),
         Line::from(Span::styled(
             "Press P to change provider/model",
+            Style::default().fg(colors.muted),
+        )),
+        Line::from(Span::styled(
+            "Use /router to toggle automatic model switching",
             Style::default().fg(colors.muted),
         )),
     ];

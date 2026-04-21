@@ -2,7 +2,71 @@
 //!
 //! Handles selection of appropriate model tier based on complexity and intent.
 
+use crate::providers::local_discover::LocalModelConfig;
 use crate::router::types::{AgentMode, Complexity, Intent, ModelTier, RouterConfig};
+use std::sync::{Arc, RwLock};
+
+/// Global state for discovered local models
+/// Lazily initialized on first access
+static LOCAL_MODELS: once_cell::sync::Lazy<Arc<RwLock<Option<LocalModelConfig>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
+
+/// Initialize local model discovery
+pub fn init_local_model_discovery() {
+    let config = crate::providers::local_discover::discover_all_models();
+    if let Ok(mut models) = LOCAL_MODELS.write() {
+        *models = Some(config);
+    }
+}
+
+/// Get available local models
+pub fn get_available_local_models() -> Vec<String> {
+    if let Ok(models) = LOCAL_MODELS.read() {
+        if let Some(config) = models.as_ref() {
+            return config.ollama.keys().cloned().collect();
+        }
+    }
+    Vec::new()
+}
+
+/// Check if any local models are available
+pub fn has_local_models() -> bool {
+    if let Ok(models) = LOCAL_MODELS.read() {
+        if let Some(config) = models.as_ref() {
+            return !config.ollama.is_empty();
+        }
+    }
+    false
+}
+
+/// Get the best available local model for a given tier
+/// Returns the first available model, or None if no models exist
+pub fn get_best_local_model() -> Option<String> {
+    get_available_local_models().into_iter().next()
+}
+
+/// Check if Ollama server is running
+pub fn is_ollama_running() -> bool {
+    use crate::providers::ollama::OllamaProvider;
+    let provider = OllamaProvider::new();
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(async { provider.is_running().await })
+}
+
+/// Get detailed information about local models
+pub fn get_local_models_info() -> Vec<(String, String, String)> {
+    // Returns (name, size, modified_date)
+    if let Ok(models) = LOCAL_MODELS.read() {
+        if let Some(config) = models.as_ref() {
+            return config
+                .ollama
+                .iter()
+                .map(|(name, info)| (name.clone(), info.size.clone(), info.modified.clone()))
+                .collect();
+        }
+    }
+    Vec::new()
+}
 
 /// Pick the appropriate model tier based on complexity, intent, and config
 pub fn pick_model_tier(
@@ -46,6 +110,22 @@ pub fn pick_model_tier(
 /// Get the default model name for a tier
 pub fn get_model_for_tier(tier: ModelTier) -> &'static str {
     tier.default_model()
+}
+
+/// Get the default model name for a tier, preferring available local models
+pub fn get_model_for_tier_with_local(tier: ModelTier) -> String {
+    match tier {
+        ModelTier::Local => {
+            // Try to get an available local model
+            let models = get_available_local_models();
+            if let Some(first_model) = models.first() {
+                first_model.clone()
+            } else {
+                tier.default_model().to_string()
+            }
+        }
+        _ => tier.default_model().to_string(),
+    }
 }
 
 /// Check if a model tier supports a given feature

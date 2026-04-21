@@ -45,7 +45,9 @@ pub use context::pick_budget;
 pub use memory::pick_memory_policy;
 pub use mode::{can_transition, get_mode_display, get_mode_instruction, pick_mode, transition};
 pub use model::{
-    estimate_cost_per_1k, get_model_for_tier, pick_model_tier, tier_supports_streaming,
+    estimate_cost_per_1k, get_available_local_models, get_model_for_tier,
+    get_model_for_tier_with_local, has_local_models, init_local_model_discovery, pick_model_tier,
+    tier_supports_streaming,
 };
 pub use tools::{filter_tools_by_policy, pick_tools};
 

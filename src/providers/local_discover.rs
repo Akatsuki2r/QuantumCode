@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::providers::ollama::{OllamaModelDetail, OllamaProvider};
+
 /// Discovered local model information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalModel {
@@ -69,32 +71,59 @@ pub fn discover_all_models() -> LocalModelConfig {
     config
 }
 
-/// Discover Ollama models using `ollama list`
+/// Discover Ollama models using comprehensive detection (API -> CLI -> filesystem)
 fn discover_ollama_models(config: &mut LocalModelConfig) {
-    let output = Command::new("ollama").args(["list"]).output();
+    // Use the unified comprehensive detection method
+    let (names, details, is_running) = OllamaProvider::detect_models_comprehensive();
 
-    if let Ok(output) = output {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        // Parse ollama list output
-        // Format: NAME                    ID          SIZE      MODIFIED
-        for line in stdout.lines().skip(1) {
-            // Skip header
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 {
-                let name = parts[0].to_string();
-                let size = parts[2].to_string();
-                let modified = parts[3..].join(" ");
+    if is_running {
+        tracing::info!("Ollama server is running with {} models", names.len());
+    } else if !names.is_empty() {
+        tracing::info!(
+            "Found {} locally installed Ollama models (server not running)",
+            names.len()
+        );
+    }
 
-                config.ollama.insert(
-                    name.clone(),
-                    OllamaModelInfo {
-                        name,
-                        size,
-                        modified,
-                    },
-                );
-            }
-        }
+    for (name, detail) in names.iter().zip(details.iter()) {
+        let size = format_size_bytes(detail.size);
+        let modified = extract_date_from_iso(&detail.modified_at);
+
+        config.ollama.insert(
+            name.clone(),
+            OllamaModelInfo {
+                name: name.clone(),
+                size,
+                modified,
+            },
+        );
+    }
+
+    if !config.ollama.is_empty() {
+        tracing::debug!("Discovered {} Ollama models total", config.ollama.len());
+    }
+}
+
+/// Extract date portion from ISO timestamp
+fn extract_date_from_iso(iso_date: &str) -> String {
+    // Take first 10 chars (YYYY-MM-DD) from ISO format
+    iso_date.chars().take(10).collect()
+}
+
+/// Format bytes to human-readable size string
+fn format_size_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.1}GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1}MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1}KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{}B", bytes)
     }
 }
 

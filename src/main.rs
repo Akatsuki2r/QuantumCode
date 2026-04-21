@@ -55,6 +55,9 @@ fn main() -> Result<()> {
             config.lm_studio.len(),
             config.llama_cpp.len()
         );
+
+        // Initialize router's local model cache
+        router::model::init_local_model_discovery();
     });
 
     // Run the CLI

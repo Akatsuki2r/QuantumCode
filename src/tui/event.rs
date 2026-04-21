@@ -6,13 +6,13 @@ use std::time::Duration;
 use crate::app::{App, Mode};
 use color_eyre::eyre::Result;
 
-/// Handle all events
-pub fn handle_events(app: &mut App) -> Result<bool> {
+/// Handle all events (async for AI responses)
+pub async fn handle_events(app: &mut App) -> Result<bool> {
     if crossterm::event::poll(Duration::from_millis(100))? {
         match crossterm::event::read()? {
             Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
-                    return handle_key_event(app, key);
+                    return handle_key_event(app, key).await;
                 }
             }
             Event::Resize(_, _) => {
@@ -24,8 +24,8 @@ pub fn handle_events(app: &mut App) -> Result<bool> {
     Ok(false)
 }
 
-/// Handle keyboard events
-fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
+/// Handle keyboard events (async for AI responses)
+async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
     // Global shortcuts — always fire regardless of mode
     match (key.modifiers, key.code) {
         // Quit
@@ -101,9 +101,9 @@ fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bo
         _ => {}
     }
 
-    // Mode-specific handling
+    // Mode-specific handling (all async now)
     match app.mode {
-        Mode::Normal => handle_normal_mode(app, key),
+        Mode::Normal => handle_normal_mode(app, key).await,
         Mode::Help => handle_help_mode(app, key),
         Mode::Editing => handle_editing_mode(app, key),
         Mode::Review => handle_review_mode(app, key),
@@ -113,8 +113,49 @@ fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bo
     }
 }
 
-/// Handle normal mode input
-fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
+/// Send a message to the AI provider and get a response
+async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+    use crate::providers::{Message, Provider, Role};
+
+    let provider_name = app.session.provider.clone();
+    let model = app.session.model.clone();
+
+    // Convert app messages to provider format
+    let messages: Vec<Message> = app
+        .session
+        .messages
+        .iter()
+        .map(|m| Message {
+            role: match m.role.as_str() {
+                "user" => Role::User,
+                "assistant" => Role::Assistant,
+                "system" => Role::System,
+                _ => Role::User,
+            },
+            content: m.content.clone(),
+            name: None,
+        })
+        .collect();
+
+    // Create appropriate provider and send
+    match provider_name.as_str() {
+        "ollama" => {
+            let provider = crate::providers::OllamaProvider::with_model(model);
+            let response = provider.send(messages).await?;
+            Ok(response)
+        }
+        "anthropic" => {
+            let mut provider = crate::providers::AnthropicProvider::new();
+            provider.set_model(model);
+            let response = provider.send(messages).await?;
+            Ok(response)
+        }
+        _ => Err(format!("Unknown provider: {}", provider_name).into()),
+    }
+}
+
+/// Handle normal mode input (async for AI responses)
+async fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
     match (key.modifiers, key.code) {
         // Enter - send message
         (KeyModifiers::NONE, KeyCode::Enter) => {
@@ -123,11 +164,40 @@ fn handle_normal_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<
                 if app.input.starts_with('/') {
                     handle_slash_command(app)?;
                 } else {
+                    let prompt = app.input.clone();
+
+                    // Route the prompt through the router for automatic model selection
+                    let (selected_provider, selected_model) = app.route_prompt(&prompt);
+
+                    // Update session with selected provider/model
+                    app.session.provider = selected_provider.clone();
+                    app.session.model = selected_model.clone();
+
+                    // Notify user if router selected a different model
+                    if app.router_enabled {
+                        app.set_status(Some(format!(
+                            "Router: {} → {} ({})",
+                            app.session.model, selected_model, selected_provider
+                        )));
+                    }
+
                     // Add user message
-                    app.add_message("user", &app.input.clone());
+                    app.add_message("user", &prompt);
                     app.input.clear();
                     app.cursor_position = 0;
-                    // TODO: Send to AI and get response
+
+                    // Send to AI and get response
+                    app.set_status(Some("Thinking...".to_string()));
+                    match send_to_ai(app, &prompt).await {
+                        Ok(response) => {
+                            app.add_message("assistant", &response);
+                            app.set_status(None);
+                        }
+                        Err(e) => {
+                            app.add_message("system", &format!("Error: {}", e));
+                            app.set_status(None);
+                        }
+                    }
                 }
             }
             Ok(false)
@@ -406,6 +476,64 @@ Config file: ~/.config/quantumn-code/config.toml",
                 }
             }
         }
+        "ollama" | "o" => {
+            // List detected Ollama models with details
+            let models_info = crate::router::model::get_local_models_info();
+            let is_running = crate::router::model::is_ollama_running();
+
+            if models_info.is_empty() {
+                let msg = if is_running {
+                    "No Ollama models found.\n\nInstall models with:\n  ollama pull llama3.2\n  ollama pull mistral\n  ollama pull codellama"
+                } else {
+                    "Ollama server is not running.\n\nStart it with:\n  ollama serve\n\nThen install models:\n  ollama pull llama3.2"
+                };
+                app.add_message("system", msg);
+            } else {
+                let mut lines = vec![
+                    format!("╔════════════════════════════════════════════════════════════════╗"),
+                    format!(
+                        "║ OLLAMA MODELS {:<16}                                ║",
+                        if is_running {
+                            "(Server Running)"
+                        } else {
+                            "(Server Offline)"
+                        }
+                    ),
+                    format!("╠════════════════════════════════════════════════════════════════╣"),
+                ];
+
+                lines.push(format!(
+                    "║ {:<25} {:>10}  {:>12} ║",
+                    "Model", "Size", "Modified"
+                ));
+                lines.push(format!(
+                    "╠════════════════════════════════════════════════════════════════╣"
+                ));
+
+                for (name, size, modified) in &models_info {
+                    // Truncate long names
+                    let display_name = if name.len() > 24 {
+                        format!("{}...", &name[..21])
+                    } else {
+                        name.clone()
+                    };
+                    lines.push(format!(
+                        "║ {:<25} {:>10}  {:>12} ║",
+                        display_name, size, modified
+                    ));
+                }
+
+                lines.push(format!(
+                    "╚════════════════════════════════════════════════════════════════╝"
+                ));
+                lines.push(String::new());
+                lines.push(format!("Total: {} model(s)", models_info.len()));
+                lines.push(String::new());
+                lines.push(format!("Use: /model <model_name> to switch"));
+
+                app.add_message("system", &lines.join("\n"));
+            }
+        }
         "status" | "s" => {
             let status = format!(
                 "╔════════════════════════════════════════════════════════════════╗\n\
@@ -452,6 +580,68 @@ Config file: ~/.config/quantumn-code/config.toml",
                 app.add_message("system", "Available modes:\n  /mode plan  - AI plans before implementing\n  /mode build - AI implements directly\n  /mode chat  - Casual conversation");
             }
         }
+        "router" | "r" => match arg {
+            Some("on") | Some("enable") => {
+                app.router_enabled = true;
+                app.add_message(
+                    "system",
+                    "✓ Router enabled - automatic model switching active",
+                );
+            }
+            Some("off") | Some("disable") => {
+                app.router_enabled = false;
+                app.add_message(
+                    "system",
+                    "✓ Router disabled - using manually selected model",
+                );
+            }
+            Some("status") | Some("s") => {
+                let status = if app.router_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                let msg = format!(
+                    "Router Status: {}\n\
+                         Prefer Local: {}\n\
+                         Cost Limit: ${}/1M tokens\n\
+                         RAG: {}\n\
+                         Prompt Compaction: {}",
+                    status,
+                    app.router_config.prefer_local,
+                    app.router_config.cost_limit,
+                    if app.router_config.rag.enabled {
+                        "on"
+                    } else {
+                        "off"
+                    },
+                    if app.router_config.prompt_compaction.enabled {
+                        "on"
+                    } else {
+                        "off"
+                    }
+                );
+                app.add_message("system", &msg);
+            }
+            Some("prefer-local") | Some("pl") => {
+                app.router_config.prefer_local = !app.router_config.prefer_local;
+                let status = if app.router_config.prefer_local {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                app.add_message("system", &format!("✓ Prefer local models: {}", status));
+            }
+            None => {
+                app.add_message("system", "Router commands:\n  /router on      - Enable automatic model switching\n  /router off     - Disable router, use manual selection\n  /router status  - Show router configuration\n  /router prefer-local - Toggle preference for local models");
+            }
+            _ => {
+                app.add_message(
+                    "system",
+                    "Unknown router command. Use: on, off, status, prefer-local",
+                );
+            }
+        },
         _ => {
             app.add_message(
                 "system",

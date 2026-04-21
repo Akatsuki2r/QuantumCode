@@ -116,6 +116,9 @@ impl DropdownSelector {
     }
 
     fn default_providers() -> Vec<ProviderInfo> {
+        // Get detected Ollama models if available
+        let ollama_models = Self::get_detected_ollama_models();
+
         vec![
             ProviderInfo::new(
                 "anthropic",
@@ -149,18 +152,11 @@ impl DropdownSelector {
                 "ollama",
                 "Ollama (Local)",
                 false,
-                "llama3.2",
-                vec![
-                    "llama3.2".to_string(),
-                    "llama3.1".to_string(),
-                    "llama3".to_string(),
-                    "mistral".to_string(),
-                    "codellama".to_string(),
-                    "deepseek-coder".to_string(),
-                    "qwen2.5-coder".to_string(),
-                    "phi3".to_string(),
-                    "gemma2".to_string(),
-                ],
+                ollama_models
+                    .first()
+                    .map(|s| s.as_str())
+                    .unwrap_or("llama3.2"),
+                ollama_models.clone(),
                 true,
             ),
             ProviderInfo::new(
@@ -184,6 +180,53 @@ impl DropdownSelector {
                 true,
             ),
         ]
+    }
+
+    /// Get detected Ollama models from local discovery
+    fn get_detected_ollama_models() -> Vec<String> {
+        // Try to get from router's local model cache first (most comprehensive)
+        let models = crate::router::model::get_available_local_models();
+        if !models.is_empty() {
+            return models;
+        }
+
+        // Fallback: Try comprehensive detection directly
+        use crate::providers::ollama::OllamaProvider;
+        let (names, _, _) = OllamaProvider::detect_models_comprehensive();
+        if !names.is_empty() {
+            return names;
+        }
+
+        // Default hardcoded list if nothing detected
+        vec![
+            "llama3.2".to_string(),
+            "llama3.1".to_string(),
+            "llama3".to_string(),
+            "mistral".to_string(),
+            "codellama".to_string(),
+            "deepseek-coder".to_string(),
+            "qwen2.5-coder".to_string(),
+            "phi3".to_string(),
+            "gemma2".to_string(),
+        ]
+    }
+
+    /// Refresh the list of Ollama models (call after model download/deletion)
+    pub fn refresh_ollama_models(&mut self) {
+        let ollama_models = Self::get_detected_ollama_models();
+
+        // Update Ollama provider models
+        if let Some(ollama_provider) = self.providers.iter_mut().find(|p| p.name == "ollama") {
+            ollama_provider.models = ollama_models.clone();
+            if ollama_provider.models.is_empty() {
+                ollama_provider.default_model = "llama3.2".to_string();
+            } else {
+                ollama_provider.default_model = ollama_models
+                    .first()
+                    .map(|s| s.clone())
+                    .unwrap_or("llama3.2".to_string());
+            }
+        }
     }
 
     pub fn get_current_provider(&self) -> Option<&ProviderInfo> {

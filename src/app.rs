@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::config::settings::Settings;
 use crate::config::themes::Theme;
 use crate::providers::Provider;
+use crate::router::RouterConfig;
 use crate::tui::widgets::{DropdownSelector, KanbanBoard, TabBar};
 
 /// Current mode of the application
@@ -100,6 +101,10 @@ pub struct App {
     pub tab_bar: TabBar,
     /// Kanban board
     pub kanban: KanbanBoard,
+    /// Router configuration for automatic model selection
+    pub router_config: RouterConfig,
+    /// Whether automatic model switching via router is enabled
+    pub router_enabled: bool,
 }
 
 impl App {
@@ -132,7 +137,49 @@ impl App {
             dropdown: DropdownSelector::new(),
             tab_bar: TabBar::new(),
             kanban: KanbanBoard::new(),
+            router_config: RouterConfig::default(),
+            router_enabled: true,
         }
+    }
+
+    /// Route a prompt through the router and automatically select model
+    /// Returns (provider, model) pair based on router decision
+    pub fn route_prompt(&self, prompt: &str) -> (String, String) {
+        use crate::router::{model::get_model_for_tier_with_local, route};
+
+        if !self.router_enabled {
+            // Router disabled, use current selection
+            return (self.session.provider.clone(), self.session.model.clone());
+        }
+
+        // Get routing decision
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "/".to_string());
+
+        let decision = route(prompt, &cwd, &self.router_config);
+
+        // Map model tier to actual provider/model
+        // Local tier uses discovered Ollama models, others use cloud providers
+        let model = get_model_for_tier_with_local(decision.model_tier);
+
+        // Determine provider based on tier
+        let provider = match decision.model_tier {
+            crate::router::ModelTier::Local => {
+                // Check if we have local models available
+                if crate::router::model::has_local_models() {
+                    "ollama".to_string()
+                } else {
+                    // Fall back to fast tier if no local models
+                    "anthropic".to_string()
+                }
+            }
+            crate::router::ModelTier::Fast => "anthropic".to_string(),
+            crate::router::ModelTier::Standard => "anthropic".to_string(),
+            crate::router::ModelTier::Capable => "anthropic".to_string(),
+        };
+
+        (provider, model)
     }
 
     /// Add a message to the conversation

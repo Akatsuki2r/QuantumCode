@@ -68,7 +68,9 @@ fn run_tui(mut app: crate::app::App) -> Result<()> {
     )?;
 
     // Main loop
-    let res = run_app(&mut terminal, &mut app);
+    let res = tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async { run_app(&mut terminal, &mut app).await })
+    });
 
     // Restore terminal
     restore_terminal()?;
@@ -77,15 +79,15 @@ fn run_tui(mut app: crate::app::App) -> Result<()> {
 }
 
 /// Run the main application loop
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut crate::app::App) -> Result<()> {
+async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut crate::app::App) -> Result<()> {
     loop {
         // Draw frame
         terminal
             .draw(|frame| render::render(frame, app))
             .map_err(|e| color_eyre::eyre::eyre!(e.to_string()))?;
 
-        // Handle events
-        if event::handle_events(app)? {
+        // Handle events (now async for AI responses)
+        if event::handle_events(app).await? {
             break;
         }
 
