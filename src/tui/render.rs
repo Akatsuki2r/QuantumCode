@@ -53,19 +53,19 @@ pub fn render(frame: &mut Frame, app: &App) {
     let suggestion_height = if has_suggestions { 2 } else { 0 };
 
     let chunks = Layout::vertical([
+        Constraint::Length(1),                 // Status bar
         Constraint::Min(1),                    // Chat Area
         Constraint::Length(3),                 // Input
         Constraint::Length(suggestion_height), // Suggestion bar (conditional)
-        Constraint::Length(1),                 // Status bar
     ])
     .split(frame.area());
 
-    render_chat(frame, chunks[0], app, &colors);
-    render_input(frame, chunks[1], app, &colors);
+    render_status_bar(frame, chunks[0], app, &colors);
+    render_chat(frame, chunks[1], app, &colors);
+    render_input(frame, chunks[2], app, &colors);
     if has_suggestions {
-        render_suggestions(frame, chunks[2], app, &colors);
+        render_suggestions(frame, chunks[3], app, &colors);
     }
-    render_status_bar(frame, chunks[3], app, &colors);
 
     // Conditionally render overlays
     if matches!(app.mode, Mode::Focus) {
@@ -103,7 +103,18 @@ fn render_status_bar(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Compressed Status Bar: [Mode] (branch) [R] [Tier] [Tokens] [Model]
+    // Ensure we don't overflow the width to prevent hardware scrolling artifacts
+    let available_width = area.width;
+    
+    // Truncate model name if terminal is narrow
+    let model_display = if available_width < 60 && app.session.model.len() > 15 {
+        format!("{}…", &app.session.model[..12])
+    } else if available_width < 100 && app.session.model.len() > 25 {
+        format!("{}…", &app.session.model[..22])
+    } else {
+        app.session.model.clone()
+    };
+
     let mut spans = vec![Span::styled(
         format!(
             " {} ",
@@ -116,7 +127,7 @@ fn render_status_bar(
         Style::default().fg(colors.background).bg(colors.accent),
     )];
 
-    if let Some(ref branch) = app.git_branch {
+    if let Some(ref branch) = app.git_branch && available_width > 40 {
         spans.push(Span::raw(" "));
         spans.push(Span::styled(
             format!("({})", branch),
@@ -146,7 +157,7 @@ fn render_status_bar(
             Style::default().fg(colors.muted),
         ),
         Span::styled(
-            format!(" {} ", app.session.model),
+            format!(" {} ", model_display),
             Style::default().fg(colors.muted).italic(),
         ),
     ]);
@@ -277,12 +288,17 @@ fn render_input(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // This is the main chat input bar
-    // Show provider/model in the input title
-    let provider_text = format!("[{}:{}]", app.session.provider, app.session.model);
+    // Truncate title info to prevent decapitation if window is too small
+    let provider_info = format!("{}:{}", app.session.provider, app.session.model);
+    let max_title_len = area.width.saturating_sub(10) as usize;
+    let display_info = if provider_info.len() > max_title_len {
+        format!("{}…", &provider_info[..max_title_len.saturating_sub(1)])
+    } else {
+        provider_info
+    };
 
     let title_line = Line::from(vec![Span::styled(
-        format!(" {} ", provider_text),
+        format!(" [{}] ", display_info),
         Style::default().fg(colors.accent),
     )]);
 
