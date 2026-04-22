@@ -60,6 +60,12 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
             return Ok(false);
         }
 
+        // Provider Selector (Ctrl+P)
+        (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
+            app.open_dropdown();
+            return Ok(false);
+        }
+
         // Escape — close command palette or return to chat
         (KeyModifiers::NONE, KeyCode::Esc) => {
             if app.command_palette_active {
@@ -72,6 +78,36 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
         }
 
         _ => {}
+    }
+
+    // Dropdown handling - takes priority when open
+    use crate::tui::widgets::{DropdownAction, DropdownState};
+    if !matches!(app.dropdown.state, DropdownState::Closed) {
+        if let Some(action) = app.dropdown.handle_key(key) {
+            match action {
+                DropdownAction::ProviderSelected => {
+                    // Provider selected, now show models
+                    app.set_status(Some("Select a model...".to_string()));
+                }
+                DropdownAction::Confirmed(provider, model) => {
+                    let provider_clone = provider.clone();
+                    let model_clone = model.clone();
+                    app.session.provider = provider;
+                    app.session.model = model;
+                    app.set_status(Some(format!("Using {}: {}", provider_clone, model_clone)));
+                    app.debug_log(&format!("Provider/model changed: {} -> {}", provider_clone, model_clone));
+                }
+                DropdownAction::NeedsApiKey => {
+                    app.set_status(Some("API key required - set environment variable".to_string()));
+                }
+                DropdownAction::Close => {
+                    app.set_status(None);
+                }
+                _ => {}
+            }
+            return Ok(false);
+        }
+        return Ok(false);
     }
 
     // Mode-specific handling
@@ -454,39 +490,8 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
                 app.set_status(Some(format!("Provider changed to: {}", provider_name)));
                 app.add_message("system", &format!("✓ Provider set to: {}", provider_name));
             } else {
-                // Show all providers
-                let msg = "╔════════════════════════════════════════════════════════════════╗\n\
-║ AVAILABLE AI PROVIDERS                                          ║\n\
-╠════════════════════════════════════════════════════════════════╣\n\
-║ ANTHROPIC (Cloud)                                             ║\n\
-║   Provider: anthropic                                          ║\n\
-║   Default: claude-sonnet-4-20250514                            ║\n\
-║   Models: claude-opus-4, claude-sonnet-4, claude-haiku-4      ║\n\
-║   Setup: export ANTHROPIC_API_KEY=your_key                      ║\n\
-\n\
-║ OPENAI (Cloud)                                                 ║\n\
-║   Provider: openai                                             ║\n\
-║   Default: gpt-4o                                              ║\n\
-║   Models: gpt-4o, gpt-4o-mini, gpt-4-turbo, o1, o1-mini        ║\n\
-║   Setup: export OPENAI_API_KEY=your_key                        ║\n\
-\n\
-║ OLLAMA (Local)                                                 ║\n\
-║   Provider: ollama                                             ║\n\
-║   Default: llama3.2                                            ║\n\
-║   Setup: ollama serve && ollama pull llama3.2                  ║\n\
-\n\
-║ LM STUDIO (Local)                                              ║\n\
-║   Provider: lm_studio                                           ║\n\
-║   Default: llama3.2                                             ║\n\
-║   Setup: lms server start OR LM Studio GUI                    ║\n\
-\n\
-║ LLAMA.CPP (Local)                                              ║\n\
-║   Provider: llama_cpp                                          ║\n\
-║   Default: llama3.2                                             ║\n\
-║   Setup: llama-server binary + GGUF model files                ║\n\
-\n\
-To switch: /provider <provider_name>";
-                app.add_message("system", msg);
+                // Re-enable interactive dropdown for provider selection
+                app.open_dropdown();
             }
             Ok(false)
         }
@@ -496,36 +501,9 @@ To switch: /provider <provider_name>";
                 app.set_status(Some(format!("Model changed to: {}", model)));
                 app.add_message("system", &format!("✓ Model set to: {}", model));
             } else {
-                // Show all models
-                let msg = "╔════════════════════════════════════════════════════════════════╗\n\
-║ CLOUD MODELS                                                   ║\n\
-╠════════════════════════════════════════════════════════════════╣\n\
-║ ANTHROPIC (Claude)                                            ║\n\
-  claude-opus-4-20250514   - Most capable (Opus 4)\n\
-  claude-sonnet-4-20250514 - Balanced (Sonnet 4) [default]\n\
-  claude-haiku-4-20250514  - Fast (Haiku 4)\n\
-  claude-3-5-sonnet-20241022 - Legacy (Sonnet 3.5)\n\
-  claude-3-5-haiku-20241022  - Legacy (Haiku 3.5)\n\
-\n\
-║ OPENAI                                                        ║\n\
-  gpt-4o       - GPT-4 Omni (recommended)\n\
-  gpt-4o-mini  - GPT-4 Omni Mini (fast, cheap)\n\
-  gpt-4-turbo  - GPT-4 Turbo\n\
-  o1           - O1 (advanced reasoning)\n\
-  o1-mini      - O1 Mini\n\
-\n\
-╔════════════════════════════════════════════════════════════════╗\n\
-║ LOCAL MODELS (Ollama / LM Studio / llama.cpp)                 ║\n\
-╠════════════════════════════════════════════════════════════════╣\n\
-  llama3.2       - Meta Llama 3.2\n\
-  llama3.1       - Meta Llama 3.1\n\
-  mistral        - Mistral\n\
-  codellama      - Code Llama\n\
-  deepseek-coder - DeepSeek Coder\n\
-  qwen2.5-coder  - Qwen 2.5 Coder\n\
-\n\
-To switch: /model <model_name>";
-                app.add_message("system", msg);
+                // Scan laptop for local models before showing interactive picker
+                app.refresh_local_models();
+                app.open_dropdown();
             }
             Ok(false)
         }

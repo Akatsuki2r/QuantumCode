@@ -97,8 +97,6 @@ pub struct App {
     pub router_config: RouterConfig,
     /// Whether automatic model switching via router is enabled
     pub router_enabled: bool,
-    /// Debug log messages (circular buffer, latest 100)
-    pub debug_logs: Vec<(std::time::Instant, String)>,
     /// Input buffer for the command palette
     pub command_palette_input: String,
     /// Cursor position in command palette input
@@ -149,7 +147,6 @@ impl App {
             dropdown: DropdownSelector::new(),
             router_config: RouterConfig::default(),
             router_enabled: true,
-            debug_logs: Vec::new(),
             command_palette_input: String::new(),
             command_palette_cursor_position: 0,
             command_palette_active: false,
@@ -170,6 +167,22 @@ impl App {
         }
     }
 
+    /// Force a scan of local models (Ollama/LM Studio) and update state
+    pub fn refresh_local_models(&mut self) {
+        let (names, _details, is_running) = crate::providers::ollama::OllamaProvider::detect_models_comprehensive();
+        if is_running {
+            tracing::debug!(target: "debug_console", "Discovered {} local models", names.len());
+        }
+    }
+
+    /// Open the dropdown and synchronize it with the current session state
+    pub fn open_dropdown(&mut self) {
+        let provider = self.session.provider.clone();
+        let model = self.session.model.clone();
+        self.dropdown.open();
+        self.dropdown.select(&provider, &model);
+    }
+
     fn get_git_branch() -> Option<String> {
         std::process::Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -187,12 +200,7 @@ impl App {
 
     /// Add a debug log entry
     pub fn debug_log(&mut self, message: &str) {
-        self.debug_logs.push((Instant::now(), message.to_string()));
-        // Keep only last 100 entries
-        if self.debug_logs.len() > 100 {
-            self.debug_logs.remove(0);
-        }
-        tracing::debug!(target: "debug_console", "{}", message); // Always log to tracing
+        tracing::debug!(target: "debug_console", "{}", message);
     }
 
     /// Toggle command palette visibility

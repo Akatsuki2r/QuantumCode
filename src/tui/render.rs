@@ -47,17 +47,24 @@ pub fn render(frame: &mut Frame, app: &App) {
     frame.render_widget(Clear, frame.area());
 
     // Intent-driven layout: focus on the conversation
+    // Only allocate space for suggestion bar if there's content to show
+    // Don't show empty state hint - it wastes space and can cause layout issues
+    let has_suggestions = !app.input.is_empty();
+    let suggestion_height = if has_suggestions { 2 } else { 0 };
+
     let chunks = Layout::vertical([
-        Constraint::Min(1),    // Chat Area
-        Constraint::Length(3), // Input
-        Constraint::Length(1), // Suggestion bar
-        Constraint::Length(1), // Status bar
+        Constraint::Min(1),                    // Chat Area
+        Constraint::Length(3),                 // Input
+        Constraint::Length(suggestion_height), // Suggestion bar (conditional)
+        Constraint::Length(1),                 // Status bar
     ])
     .split(frame.area());
-    
+
     render_chat(frame, chunks[0], app, &colors);
     render_input(frame, chunks[1], app, &colors);
-    render_suggestions(frame, chunks[2], app, &colors);
+    if has_suggestions {
+        render_suggestions(frame, chunks[2], app, &colors);
+    }
     render_status_bar(frame, chunks[3], app, &colors);
 
     // Conditionally render overlays
@@ -69,6 +76,13 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     if app.command_palette_active {
         render_command_palette_overlay(frame, app, &colors);
+    }
+
+    // Render dropdown overlay when open (not collapsed)
+    if !matches!(app.dropdown.state, crate::tui::widgets::DropdownState::Closed) {
+        let dropdown_area = center_rect(60, 15, frame.area());
+        frame.render_widget(Clear, dropdown_area);
+        app.dropdown.render(frame, dropdown_area, &colors);
     }
 }
 
@@ -350,9 +364,9 @@ fn render_help(
         Line::from("  F1          - Toggle help"),
         Line::from("  Ctrl+K      - Open Command Palette"),
         Line::from("  /           - Slash commands in chat"),
-        Line::from("  P           - Open provider selector (via Command Palette)"),
-        Line::from("  ←→         - Switch tabs"),
         Line::from("  P           - Open provider selector"),
+        Line::from("  ←→         - Switch tabs"),
+        Line::from("  Ctrl+P      - Toggle provider quick menu"),
         Line::default(),
         Line::from(Span::styled(
             "Commands:",
