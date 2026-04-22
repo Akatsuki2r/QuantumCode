@@ -1,7 +1,9 @@
 //! Event handling for the TUI
 
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use std::time::Duration;
+use futures::{Stream, StreamExt};
+use crate::providers::{StreamChunk, ProviderError};
 
 use crate::app::{App, Mode};
 use color_eyre::eyre::Result;
@@ -16,6 +18,19 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
             Event::Key(key) => {
                 if key.kind == KeyEventKind::Press {
                     return handle_key_event(app, key).await;
+                }
+            }
+            Event::Mouse(mouse) => {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        app.auto_scroll = false;
+                        app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        app.auto_scroll = false;
+                        app.scroll_offset += 3;
+                    }
+                    _ => {}
                 }
             }
             Event::Resize(_, _) => {
@@ -202,11 +217,12 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
 
     let start_time = std::time::Instant::now();
 
-    // Convert app messages to provider format
+    // Convert app messages to provider format, excluding the empty placeholder for the current response
     let messages: Vec<Message> = app
         .session
         .messages
         .iter()
+        .take(app.session.messages.len().saturating_sub(1))
         .map(|m| Message {
             role: match m.role.as_str() {
                 "user" => Role::User,
@@ -226,36 +242,39 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
     );
 
     // Create appropriate provider and send
-    let response = match provider_name.as_str() {
+    let mut full_response = String::new();
+
+    match provider_name.as_str() {
         "ollama" => {
-            tracing::debug!(target: "chat_flow", "Creating Ollama provider with model: {}", model);
             let provider = crate::providers::OllamaProvider::with_model(model);
-            tracing::trace!(target: "chat_flow", "Sending request to Ollama API");
-            let response = provider.send(messages).await?;
-            tracing::debug!(target: "chat_flow", "Ollama response received, length: {}", response.len());
-            response
+            // Explicitly type the stream and remove the '?' since send_stream returns the stream itself
+            let mut stream: std::pin::Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> =
+                provider.send_stream(messages).await;
+            
+            while let Some(chunk_result) = stream.next().await {
+                if let Ok(chunk) = chunk_result {
+                    full_response.push_str(&chunk.content);
+                    // Update the last message in real-time for the UI to render
+                    if let Some(msg) = app.session.messages.last_mut() {
+                        msg.content = full_response.clone();
+                    }
+                }
+            }
         }
         "anthropic" => {
-            tracing::debug!(target: "chat_flow", "Creating Anthropic provider with model: {}", model);
             let mut provider = crate::providers::AnthropicProvider::new();
             provider.set_model(model);
-            tracing::trace!(target: "chat_flow", "Sending request to Anthropic API");
-            let response = provider.send(messages).await?;
-            tracing::debug!(target: "chat_flow", "Anthropic response received, length: {}", response.len());
-            response
+            if let Ok(response) = provider.send(messages).await {
+                full_response = response;
+                if let Some(msg) = app.session.messages.last_mut() {
+                    msg.content = full_response.clone();
+                }
+            }
         }
         _ => return Err(format!("Unknown provider: {}", provider_name).into()),
     };
 
-    let elapsed = start_time.elapsed();
-    tracing::info!(
-        target: "chat_flow",
-        "AI response received in {:.2?} ({} bytes)",
-        elapsed,
-        response.len()
-    );
-
-    Ok(response)
+    Ok(full_response)
 }
 
 /// Handle normal mode input (async for AI responses)
@@ -301,29 +320,9 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                     app.cursor_position = 0;
                     app.debug_log(&format!("Message sent to AI: {}", prompt));
 
-                    // Send to AI and get response with detailed status updates
-                    let ai_start_time = std::time::Instant::now();
-                    app.set_status(Some("[CONNECTING] Contacting AI model...".to_string()));
-
-                    match send_to_ai(app, &prompt).await {
-                        Ok(response) => {
-                            app.last_routing_duration = Some(ai_start_time.elapsed());
-                            app.set_status(Some("[RECEIVED] Processing response...".to_string()));
-                            app.debug_log("AI response received successfully");
-                            app.add_message("assistant", &response);
-                            app.set_status(Some(format!(
-                                "[COMPLETE] Response from {} ({})",
-                                selected_provider, selected_model
-                            )));
-                        }
-                        Err(e) => {
-                            app.last_routing_duration = Some(ai_start_time.elapsed());
-                            app.debug_log(&format!("AI Error: {}", e));
-                            tracing::error!(target: "chat_flow", "AI request failed: {}", e);
-                            app.add_message("system", &format!("[ERROR] AI request failed: {}", e));
-                            app.set_status(Some("[ERROR] Failed to get response".to_string()));
-                        }
-                    }
+                    // Initialize assistant message for streaming
+                    app.add_message("assistant", "");
+                    let _ = send_to_ai(app, &prompt).await;
                 }
             }
             Ok(false)

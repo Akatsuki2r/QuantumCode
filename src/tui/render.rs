@@ -152,6 +152,14 @@ fn render_chat(
         .title(Span::styled(" Chat ", Style::default().fg(colors.accent).bold()));
     let inner_area = chat_block.inner(area);
 
+    // Dynamic padding based on window width
+    let padding_width = match inner_area.width {
+        w if w < 60 => 2,
+        w if w < 100 => 4,
+        _ => 6,
+    } as usize;
+    let padding = " ".repeat(padding_width);
+
     // Build list of messages
     let messages: Vec<Line> = app
         .session
@@ -159,19 +167,16 @@ fn render_chat(
         .iter()
         .flat_map(|msg| {
             let role_style = match msg.role.as_str() {
-                "user" => Style::default().fg(colors.accent).bold(),
+                "user" => Style::default().fg(colors.accent),
                 "assistant" => Style::default().fg(colors.success),
                 _ => Style::default().fg(colors.muted),
             };
 
-            let role_prefix = Span::styled(
-                match msg.role.as_str() {
-                    "user" => "You: ",
-                    "assistant" => "AI: ",
-                    _ => "System: ",
-                },
-                role_style,
-            );
+            let role_icon = match msg.role.as_str() {
+                "user" => "󰭹 ",
+                "assistant" => "󰚩 ",
+                _ => "󱐋 ",
+            };
 
             let mut lines = Vec::new();
             let mut in_code_block = false;
@@ -180,8 +185,13 @@ fn render_chat(
                 // Detect code block delimiters
                 if line.trim().starts_with("```") {
                     in_code_block = !in_code_block;
+                    let border = if in_code_block { 
+                        format!("┌── Code {}", line.trim().trim_start_matches("```"))
+                    } else { 
+                        "└───────".to_string() 
+                    };
                     lines.push(Line::from(Span::styled(
-                        line,
+                        format!("{}{}", padding, border),
                         Style::default().fg(colors.muted).italic(),
                     )));
                     continue;
@@ -194,13 +204,19 @@ fn render_chat(
                     Style::default().fg(colors.foreground)
                 };
 
-                // Wrap individual lines while preserving original line breaks (important for box drawing)
-                for wrapped in textwrap::wrap(line, inner_area.width.saturating_sub(1) as usize) {
-                    lines.push(Line::from(Span::styled(wrapped.to_string(), style)));
+                // Add slight indentation for code or specific style
+                let display_line = if in_code_block { format!("│ {}", line) } else { line.to_string() };
+                let wrap_width = inner_area.width.saturating_sub(padding_width as u16) as usize;
+                
+                for wrapped in textwrap::wrap(&display_line, wrap_width) {
+                    lines.push(Line::from(Span::styled(format!("{}{}", padding, wrapped), style)));
                 }
             }
 
-            let mut result = vec![Line::from(role_prefix)];
+            let mut result = vec![Line::from(vec![
+                Span::raw(padding.clone()),
+                Span::styled(role_icon, role_style),
+            ])];
             result.extend(lines);
             result.push(Line::default()); // Empty line between messages
 
@@ -211,12 +227,14 @@ fn render_chat(
     let total_lines = messages.len();
     let visible_height = inner_area.height as usize;
 
-    // If auto_scroll is on, we calculate the offset to show the bottom of the buffer.
-    let scroll_offset = if app.auto_scroll {
-        total_lines.saturating_sub(visible_height) as u16
+    let max_scroll = total_lines.saturating_sub(visible_height);
+
+    // Ensure the if-expression is properly grouped before the type cast
+    let scroll_offset = (if app.auto_scroll {
+        max_scroll
     } else {
-        app.scroll_offset as u16
-    };
+        app.scroll_offset.min(max_scroll)
+    }) as u16;
 
     let paragraph = Paragraph::new(messages)
         .style(Style::default().fg(colors.foreground).bg(colors.background))
