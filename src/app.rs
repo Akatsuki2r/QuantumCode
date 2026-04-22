@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::config::settings::Settings;
 use crate::config::themes::Theme;
 use crate::providers::Provider;
+use crate::rag::{RagConfig, RagIndex};
 use crate::router::RouterConfig;
 use crate::tui::widgets::{DropdownSelector, KanbanBoard, TabBar};
 use ratatui::widgets::ListState;
@@ -157,6 +158,14 @@ impl App {
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
         }
+        .initialize()
+    }
+
+    /// Initialize application state (e.g., startup indexing)
+    fn initialize(mut self) -> Self {
+        self.debug_log("System: Initializing RAG index...");
+        self.index_project_files();
+        self
     }
 
     /// Update git branch if enough time has passed (30s throttle)
@@ -217,6 +226,38 @@ impl App {
             self.command_palette_cursor_position = 0;
         } else {
             self.mode = Mode::Chat;
+        }
+    }
+
+    /// Search the RAG index for relevant context
+    pub fn search_context(&self, query: &str) -> crate::rag::RagResult {
+        self.rag_index.search(query)
+    }
+
+    /// Add a file to the RAG index
+    pub fn index_file(&mut self, path: String, content: String) {
+        self.rag_index.add_document(path, content);
+    }
+
+    /// Index all Rust source files in the current project
+    pub fn index_project_files(&mut self) {
+        use crate::tools::glob::find_files;
+        use std::path::Path;
+
+        let base = Path::new(".");
+        // Find all Rust source files
+        if let Ok(matches) = find_files("src/**/*.rs", base) {
+            for path in matches {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let path_str = path.to_string_lossy().to_string();
+                    self.index_file(path_str, content);
+                }
+            }
+            tracing::debug!(
+                target: "rag",
+                "Indexed {} files into RAG",
+                self.rag_index.document_count()
+            );
         }
     }
 

@@ -211,6 +211,7 @@ fn handle_focus_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<b
 /// Send a message to the AI provider and get a response
 async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     use crate::providers::{Message, Provider, Role};
+    use crate::prompts::{get_core_identity, get_system_prompt, Mode};
 
     let provider_name = app.session.provider.clone();
     let model = app.session.model.clone();
@@ -246,8 +247,9 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
 
     tracing::debug!(
         target: "chat_flow",
-        "Converted {} messages to provider format",
-        messages.len()
+        "Converted {} messages to provider format, system_prompt length: {}",
+        messages.len(),
+        system_prompt.len()
     );
 
     // Create appropriate provider and send
@@ -495,6 +497,15 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
         "quit" | "q" | "exit" => {
             app.quit();
             Ok(true)
+        }
+        "refresh" => {
+            app.debug_log("RAG: Refreshing project index...");
+            app.set_status(Some("Indexing project...".to_string()));
+            app.index_project_files();
+            let count = app.rag_index.document_count();
+            app.add_message("system", &format!("✓ Project re-indexed. Found {} files for RAG context.", count));
+            app.set_status(None);
+            Ok(false)
         }
         "provider" | "p" => {
             if let Some(provider_name) = arg {
