@@ -169,7 +169,8 @@ impl App {
 
     /// Force a scan of local models (Ollama/LM Studio) and update state
     pub fn refresh_local_models(&mut self) {
-        let (names, _details, is_running) = crate::providers::ollama::OllamaProvider::detect_models_comprehensive();
+        let (names, _details, is_running) =
+            crate::providers::ollama::OllamaProvider::detect_models_comprehensive();
         if is_running {
             tracing::debug!(target: "debug_console", "Discovered {} local models", names.len());
         }
@@ -191,7 +192,11 @@ impl App {
             .and_then(|output| {
                 if output.status.success() {
                     let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if branch.is_empty() { None } else { Some(branch) }
+                    if branch.is_empty() {
+                        None
+                    } else {
+                        Some(branch)
+                    }
                 } else {
                     None
                 }

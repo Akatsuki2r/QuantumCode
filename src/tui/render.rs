@@ -1,7 +1,7 @@
 //! TUI Application state and rendering
 
-use ratatui::prelude::*;
 use ratatui::layout::Alignment;
+use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 use crate::app::{App, Mode};
@@ -79,7 +79,10 @@ pub fn render(frame: &mut Frame, app: &App) {
     }
 
     // Render dropdown overlay when open (not collapsed)
-    if !matches!(app.dropdown.state, crate::tui::widgets::DropdownState::Closed) {
+    if !matches!(
+        app.dropdown.state,
+        crate::tui::widgets::DropdownState::Closed
+    ) {
         let dropdown_area = center_rect(60, 15, frame.area());
         frame.render_widget(Clear, dropdown_area);
         app.dropdown.render(frame, dropdown_area, &colors);
@@ -101,20 +104,24 @@ fn render_status_bar(
     colors: &crate::config::themes::RatatuiColors,
 ) {
     // Compressed Status Bar: [Mode] (branch) [R] [Tier] [Tokens] [Model]
-    let mut spans = vec![
-        Span::styled(
-            format!(" {} ", match app.mode {
+    let mut spans = vec![Span::styled(
+        format!(
+            " {} ",
+            match app.mode {
                 Mode::Chat => "CHAT",
                 Mode::Command => "CMD",
                 Mode::Focus => "FOCUS",
-            }),
-            Style::default().fg(colors.background).bg(colors.accent),
+            }
         ),
-    ];
+        Style::default().fg(colors.background).bg(colors.accent),
+    )];
 
     if let Some(ref branch) = app.git_branch {
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(format!("({})", branch), Style::default().fg(colors.secondary)));
+        spans.push(Span::styled(
+            format!("({})", branch),
+            Style::default().fg(colors.secondary),
+        ));
     }
 
     spans.push(Span::raw(" "));
@@ -127,15 +134,24 @@ fn render_status_bar(
     spans.extend(vec![
         Span::raw(" "),
         Span::styled(
-            if app.session.provider == "ollama" { " [Local] " } else { " [Cloud] " },
+            if app.session.provider == "ollama" {
+                " [Local] "
+            } else {
+                " [Cloud] "
+            },
             Style::default().fg(colors.info),
         ),
-        Span::styled(format!(" ~{}k ", app.total_tokens() / 1000), Style::default().fg(colors.muted)),
-        Span::styled(format!(" {} ", app.session.model), Style::default().fg(colors.muted).italic()),
+        Span::styled(
+            format!(" ~{}k ", app.total_tokens() / 1000),
+            Style::default().fg(colors.muted),
+        ),
+        Span::styled(
+            format!(" {} ", app.session.model),
+            Style::default().fg(colors.muted).italic(),
+        ),
     ]);
 
-    let status = Paragraph::new(Line::from(spans))
-        .style(Style::default().bg(colors.background));
+    let status = Paragraph::new(Line::from(spans)).style(Style::default().bg(colors.background));
     frame.render_widget(status, area);
 }
 
@@ -149,7 +165,10 @@ fn render_chat(
     let chat_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(colors.border))
-        .title(Span::styled(" Chat ", Style::default().fg(colors.accent).bold()));
+        .title(Span::styled(
+            " Chat ",
+            Style::default().fg(colors.accent).bold(),
+        ));
     let inner_area = chat_block.inner(area);
 
     // Dynamic padding based on window width
@@ -185,10 +204,10 @@ fn render_chat(
                 // Detect code block delimiters
                 if line.trim().starts_with("```") {
                     in_code_block = !in_code_block;
-                    let border = if in_code_block { 
+                    let border = if in_code_block {
                         format!("┌── Code {}", line.trim().trim_start_matches("```"))
-                    } else { 
-                        "└───────".to_string() 
+                    } else {
+                        "└───────".to_string()
                     };
                     lines.push(Line::from(Span::styled(
                         format!("{}{}", padding, border),
@@ -205,11 +224,18 @@ fn render_chat(
                 };
 
                 // Add slight indentation for code or specific style
-                let display_line = if in_code_block { format!("│ {}", line) } else { line.to_string() };
+                let display_line = if in_code_block {
+                    format!("│ {}", line)
+                } else {
+                    line.to_string()
+                };
                 let wrap_width = inner_area.width.saturating_sub(padding_width as u16) as usize;
-                
+
                 for wrapped in textwrap::wrap(&display_line, wrap_width) {
-                    lines.push(Line::from(Span::styled(format!("{}{}", padding, wrapped), style)));
+                    lines.push(Line::from(Span::styled(
+                        format!("{}{}", padding, wrapped),
+                        style,
+                    )));
                 }
             }
 
@@ -272,14 +298,14 @@ fn render_input(
     frame.render_widget(input, area);
 
     // Show cursor
-    let cursor_x = (area.x + 1 + app.cursor_position as u16).min(area.x + area.width.saturating_sub(2));
+    let cursor_x =
+        (area.x + 1 + app.cursor_position as u16).min(area.x + area.width.saturating_sub(2));
     let cursor_y = area.y + 1;
     frame.set_cursor_position(Position {
         x: cursor_x,
         y: cursor_y,
     });
 }
-
 
 /// Render the suggestion bar under input
 fn render_suggestions(
@@ -430,7 +456,7 @@ fn render_command_palette_overlay(
     colors: &crate::config::themes::RatatuiColors,
 ) {
     let area = center_rect(60, 3, frame.area());
-    
+
     // Clear the background of the palette area
     frame.render_widget(Clear, area);
 
@@ -444,7 +470,7 @@ fn render_command_palette_overlay(
                 .border_style(Style::default().fg(colors.accent))
                 .title(" Command Palette (type command...) "),
         );
-    
+
     frame.render_widget(input, area);
 
     frame.set_cursor_position(Position {

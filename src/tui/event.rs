@@ -1,9 +1,9 @@
 //! Event handling for the TUI
 
+use crate::providers::{ProviderError, StreamChunk};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
-use std::time::Duration;
 use futures::{Stream, StreamExt};
-use crate::providers::{StreamChunk, ProviderError};
+use std::time::Duration;
 
 use crate::app::{App, Mode};
 use color_eyre::eyre::Result;
@@ -20,19 +20,17 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
                     return handle_key_event(app, key).await;
                 }
             }
-            Event::Mouse(mouse) => {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        app.auto_scroll = false;
-                        app.scroll_offset = app.scroll_offset.saturating_sub(3);
-                    }
-                    MouseEventKind::ScrollDown => {
-                        app.auto_scroll = false;
-                        app.scroll_offset += 3;
-                    }
-                    _ => {}
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    app.auto_scroll = false;
+                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
                 }
-            }
+                MouseEventKind::ScrollDown => {
+                    app.auto_scroll = false;
+                    app.scroll_offset += 3;
+                }
+                _ => {}
+            },
             Event::Resize(_, _) => {
                 // Terminal resized, will be handled on next render
             }
@@ -110,10 +108,15 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                     app.session.provider = provider;
                     app.session.model = model;
                     app.set_status(Some(format!("Using {}: {}", provider_clone, model_clone)));
-                    app.debug_log(&format!("Provider/model changed: {} -> {}", provider_clone, model_clone));
+                    app.debug_log(&format!(
+                        "Provider/model changed: {} -> {}",
+                        provider_clone, model_clone
+                    ));
                 }
                 DropdownAction::NeedsApiKey => {
-                    app.set_status(Some("API key required - set environment variable".to_string()));
+                    app.set_status(Some(
+                        "API key required - set environment variable".to_string(),
+                    ));
                 }
                 DropdownAction::Close => {
                     app.set_status(None);
@@ -134,7 +137,10 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
 }
 
 /// Handle command palette mode
-async fn handle_command_palette_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<bool> {
+async fn handle_command_palette_mode(
+    app: &mut App,
+    key: crossterm::event::KeyEvent,
+) -> Result<bool> {
     match (key.modifiers, key.code) {
         (KeyModifiers::NONE, KeyCode::Enter) => {
             if !app.command_palette_input.is_empty() {
@@ -147,20 +153,23 @@ async fn handle_command_palette_mode(app: &mut App, key: crossterm::event::KeyEv
             Ok(false)
         }
         (KeyModifiers::NONE, KeyCode::Char(c)) => {
-            app.command_palette_input.insert(app.command_palette_cursor_position, c);
+            app.command_palette_input
+                .insert(app.command_palette_cursor_position, c);
             app.command_palette_cursor_position += c.len_utf8();
             Ok(false)
         }
         (KeyModifiers::NONE, KeyCode::Backspace) => {
             if app.command_palette_cursor_position > 0 {
                 app.command_palette_cursor_position -= 1;
-                app.command_palette_input.remove(app.command_palette_cursor_position);
+                app.command_palette_input
+                    .remove(app.command_palette_cursor_position);
             }
             Ok(false)
         }
         (KeyModifiers::NONE, KeyCode::Delete) => {
             if app.command_palette_cursor_position < app.command_palette_input.len() {
-                app.command_palette_input.remove(app.command_palette_cursor_position);
+                app.command_palette_input
+                    .remove(app.command_palette_cursor_position);
             }
             Ok(false)
         }
@@ -248,9 +257,10 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
         "ollama" => {
             let provider = crate::providers::OllamaProvider::with_model(model);
             // Explicitly type the stream and remove the '?' since send_stream returns the stream itself
-            let mut stream: std::pin::Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> =
-                provider.send_stream(messages).await;
-            
+            let mut stream: std::pin::Pin<
+                Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
+            > = provider.send_stream(messages).await;
+
             while let Some(chunk_result) = stream.next().await {
                 if let Ok(chunk) = chunk_result {
                     full_response.push_str(&chunk.content);
@@ -303,7 +313,10 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                     app.session.model = selected_model.clone();
 
                     // Notify user if router selected a different model
-                    if app.router_enabled && (app.session.model != selected_model || app.session.provider != selected_provider) {
+                    if app.router_enabled
+                        && (app.session.model != selected_model
+                            || app.session.provider != selected_provider)
+                    {
                         let status = format!(
                             "[ROUTING] {} → {} ({})",
                             app.session.model, selected_model, selected_provider
