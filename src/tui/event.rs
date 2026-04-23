@@ -302,7 +302,10 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
 
         let mut tool_executed = false;
         for call in tool_calls {
-            app.debug_log(&format!("AI requested tool: {} arg='{}'", call.name, call.arg));
+            app.debug_log(&format!(
+                "AI requested tool: {} arg='{}'",
+                call.name, call.arg
+            ));
 
             let tool_registry = crate::agent::get_tools();
             let result = tool_registry.execute_tool(&call);
@@ -318,7 +321,10 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
                 _ => "󰐋",
             };
 
-            app.add_message("system", &format!("{} Executed {} for: {}", icon, call.name, call.arg));
+            app.add_message(
+                "system",
+                &format!("{} Executed {} for: {}", icon, call.name, call.arg),
+            );
 
             let result_text = if result.success {
                 format!("[Tool Result: {}]\n{}", call.name, result.stdout)

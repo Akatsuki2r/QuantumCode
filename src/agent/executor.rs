@@ -4,8 +4,8 @@ use color_eyre::eyre::Result;
 use futures::StreamExt;
 
 use super::tools::{ToolCall, ToolRegistry, ToolResult};
-use super::{AGENT_SYSTEM_PROMPT, parse_tool_calls};
-use crate::providers::{Message, Provider, Role, StreamChunk, ProviderError};
+use super::{parse_tool_calls, AGENT_SYSTEM_PROMPT};
+use crate::providers::{Message, Provider, ProviderError, Role, StreamChunk};
 use crate::router::{route, RouterConfig, RoutingDecision};
 use thiserror::Error;
 
