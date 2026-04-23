@@ -3,7 +3,7 @@
 use color_eyre::eyre::Result;
 use futures::StreamExt;
 
-use super::tools::{execute_tool, ToolCall, ToolResult};
+use super::tools::{ToolCall, ToolRegistry, ToolResult};
 use super::AGENT_SYSTEM_PROMPT;
 use crate::providers::{Message, Provider, Role, StreamChunk};
 use crate::router::{route, RouterConfig, RoutingDecision};
@@ -17,6 +17,7 @@ pub struct AgentExecutor {
     iteration: usize,
     routing: Option<RoutingDecision>,
     cwd: String,
+    tool_registry: ToolRegistry,
 }
 
 impl AgentExecutor {
@@ -40,6 +41,7 @@ impl AgentExecutor {
             iteration: 0,
             routing: None,
             cwd: cwd.to_string(),
+            tool_registry: ToolRegistry::new(),
         }
     }
 
@@ -188,7 +190,7 @@ impl AgentExecutor {
 
     /// Execute tools and return results
     fn execute_tools(&self, calls: &[ToolCall]) -> Vec<ToolResult> {
-        calls.iter().map(execute_tool).collect()
+        calls.iter().map(|call| self.tool_registry.execute_tool(call)).collect()
     }
 
     /// Get conversation history
