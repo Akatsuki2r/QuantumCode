@@ -1,6 +1,6 @@
 //! Event handling for the TUI
 
-use crate::providers::{ProviderError, StreamChunk};
+use crate::providers::{OpenCodeProvider, ProviderError, StreamChunk};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use futures::{Stream, StreamExt};
 use std::time::Duration;
@@ -210,9 +210,9 @@ fn handle_focus_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<b
 
 /// Send a message to the AI provider and get a response
 async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    use crate::providers::{Message, Provider, Role};
-    use crate::prompts::{get_system_prompt, Mode as PromptMode};
     use crate::agent::{get_tools, AGENT_SYSTEM_PROMPT};
+    use crate::prompts::{get_system_prompt, Mode as PromptMode};
+    use crate::providers::{Message, Provider, Role};
 
     let mut loop_count = 0;
     let mut final_response = String::new();
@@ -243,7 +243,9 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
         // Inject tools into the system prompt if in agentic mode
         if prompt_mode != PromptMode::Chat {
             let tool_registry = get_tools();
-            system_prompt = AGENT_SYSTEM_PROMPT.replace("{{TOOLS_LIST}}", &tool_registry.list_tools()).replace("{{TOOL_CALL_FORMAT}}", &tool_registry.tool_call_format());
+            system_prompt = AGENT_SYSTEM_PROMPT
+                .replace("{{TOOLS_LIST}}", &tool_registry.list_tools())
+                .replace("{{TOOL_CALL_FORMAT}}", &tool_registry.tool_call_format());
         }
 
         tracing::info!(
@@ -312,6 +314,16 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
                     }
                 }
             }
+            "opencode" => {
+                let mut provider = crate::providers::OpenCodeProvider::new();
+                provider.set_model(model);
+                if let Ok(response) = provider.send(messages).await {
+                    full_response = response;
+                    if let Some(msg) = app.session.messages.last_mut() {
+                        msg.content = full_response.clone();
+                    }
+                }
+            }
             _ => return Err(format!("Unknown provider: {}", provider_name).into()),
         };
 
@@ -328,7 +340,10 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
             // Tool Policy Enforcement
             // Check against decision.tool_policy here as required by Phase 5.1
 
-            app.debug_log(&format!("AI requested tool: {} arg='{}'", call.name, call.arg));
+            app.debug_log(&format!(
+                "AI requested tool: {} arg='{}'",
+                call.name, call.arg
+            ));
 
             let tool_registry = crate::agent::get_tools();
             // Execute the tool generically via registry method
@@ -432,8 +447,8 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                 let partial = &app.input[1..].to_lowercase();
                 let commands = [
                     "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
-                    "config", "status", "version", "mode", "commit", "review", "test", "router", "rag",
-                    "ollama", "search", "research",
+                    "config", "status", "version", "mode", "commit", "review", "test", "router",
+                    "rag", "ollama", "search", "research",
                 ];
                 // Find the first command that starts with the partial
                 if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
@@ -593,7 +608,10 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
         }
         "research" => {
             if let Some(query) = arg {
-                app.add_message("system", &format!("󰥼 Deep research initiated for: {}", query));
+                app.add_message(
+                    "system",
+                    &format!("󰥼 Deep research initiated for: {}", query),
+                );
                 app.debug_log(&format!("Tool: research query='{}'", query));
                 // This shares the search logic but typically involves broader retrieval
             } else {
@@ -606,7 +624,13 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
             app.set_status(Some("Indexing project...".to_string()));
             app.index_project_files();
             let count = app.rag_index.document_count();
-            app.add_message("system", &format!("✓ Project re-indexed. Found {} files for RAG context.", count));
+            app.add_message(
+                "system",
+                &format!(
+                    "✓ Project re-indexed. Found {} files for RAG context.",
+                    count
+                ),
+            );
             app.set_status(None);
             Ok(false)
         }
@@ -615,7 +639,10 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
                 Some("include") | Some("add") => {
                     if let Some(pattern) = parts.get(2) {
                         app.rag_include_patterns.push(pattern.to_string());
-                        app.add_message("system", &format!("✓ Added RAG glob pattern: {}", pattern));
+                        app.add_message(
+                            "system",
+                            &format!("✓ Added RAG glob pattern: {}", pattern),
+                        );
                         app.debug_log(&format!("RAG: Added inclusion pattern: {}", pattern));
                     } else {
                         app.add_message("system", "Usage: /rag include <pattern>");
@@ -623,7 +650,10 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
                 }
                 Some("list") | Some("ls") => {
                     let patterns = app.rag_include_patterns.join("\n  • ");
-                    app.add_message("system", &format!("RAG Include Patterns:\n  • {}", patterns));
+                    app.add_message(
+                        "system",
+                        &format!("RAG Include Patterns:\n  • {}", patterns),
+                    );
                 }
                 _ => {
                     app.add_message("system", "RAG commands:\n  /rag include <pattern> - Add a glob pattern\n  /rag list              - Show current patterns\n  /refresh               - Re-index files using patterns");

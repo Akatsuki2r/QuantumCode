@@ -190,7 +190,10 @@ impl AgentExecutor {
 
     /// Execute tools and return results
     fn execute_tools(&self, calls: &[ToolCall]) -> Vec<ToolResult> {
-        calls.iter().map(|call| self.tool_registry.execute_tool(call)).collect()
+        calls
+            .iter()
+            .map(|call| self.tool_registry.execute_tool(call))
+            .collect()
     }
 
     /// Get conversation history

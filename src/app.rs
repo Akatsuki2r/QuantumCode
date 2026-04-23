@@ -160,7 +160,11 @@ impl App {
             history_index: None,
             auto_scroll: true,
             rag_index: RagIndex::new(RagConfig::default()),
-            rag_include_patterns: vec!["src/**/*.rs".to_string(), "src/**/*.md".to_string(), "Cargo.toml".to_string()],
+            rag_include_patterns: vec![
+                "src/**/*.rs".to_string(),
+                "src/**/*.md".to_string(),
+                "Cargo.toml".to_string(),
+            ],
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
         }
@@ -326,10 +330,11 @@ impl App {
                 if crate::router::model::has_local_models() {
                     "ollama".to_string()
                 } else {
-                    // Fall back to fast tier if no local models
-                    "anthropic".to_string()
+                    // Fall back to opencode if no local models
+                    "opencode".to_string()
                 }
             }
+            crate::router::ModelTier::OpenCode => "opencode".to_string(),
             crate::router::ModelTier::Fast => "anthropic".to_string(),
             crate::router::ModelTier::Standard => "anthropic".to_string(),
             crate::router::ModelTier::Capable => "anthropic".to_string(),

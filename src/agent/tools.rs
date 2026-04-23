@@ -194,9 +194,11 @@ impl ToolRegistry {
             "Write content to file. Arg: file path, Content: content to write",
             |call| tool_write(&call.arg, call.content.as_deref().unwrap_or("")),
         );
-        registry.register_tool("Bash", "Execute shell command. Arg: command string", |call| {
-            tool_bash(&call.arg)
-        });
+        registry.register_tool(
+            "Bash",
+            "Execute shell command. Arg: command string",
+            |call| tool_bash(&call.arg),
+        );
         registry.register_tool(
             "Grep",
             "Search file contents. Arg: pattern, Path: directory to search",
@@ -298,7 +300,8 @@ Example - Glob:
 <name>Glob</name>
 <arg>*.rs</arg>
 </tool>
-"#.to_string()
+"#
+        .to_string()
     }
 }
 
