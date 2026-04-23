@@ -353,7 +353,7 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                 let commands = [
                     "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
                     "config", "status", "version", "mode", "commit", "review", "test", "router", "rag",
-                    "ollama",
+                    "ollama", "search", "research",
                 ];
                 // Find the first command that starts with the partial
                 if let Some(matched) = commands.iter().find(|c| c.starts_with(partial.as_str())) {
@@ -500,6 +500,26 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
         "quit" | "q" | "exit" => {
             app.quit();
             Ok(true)
+        }
+        "search" => {
+            if let Some(query) = arg {
+                app.add_message("system", &format!("󰄉 Searching the web for: {}", query));
+                app.debug_log(&format!("Tool: search query='{}'", query));
+                // TODO: Wire to a search provider like Tavily or Brave Search
+            } else {
+                app.add_message("system", "Usage: /search <query>");
+            }
+            Ok(false)
+        }
+        "research" => {
+            if let Some(query) = arg {
+                app.add_message("system", &format!("󰥼 Deep research initiated for: {}", query));
+                app.debug_log(&format!("Tool: research query='{}'", query));
+                // This shares the search logic but typically involves broader retrieval
+            } else {
+                app.add_message("system", "Usage: /research <query>");
+            }
+            Ok(false)
         }
         "refresh" => {
             app.debug_log("RAG: Refreshing project index...");
