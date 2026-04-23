@@ -213,76 +213,37 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
     use crate::agent::{get_tools, AGENT_SYSTEM_PROMPT};
     use crate::prompts::{get_system_prompt, Mode as PromptMode};
     use crate::providers::{Message, Provider, Role};
+    use crate::prompts::{get_core_identity, get_system_prompt, Mode};
 
-    let mut loop_count = 0;
-    let mut final_response = String::new();
+    let provider_name = app.session.provider.clone();
+    let model = app.session.model.clone();
 
-    loop {
-        loop_count += 1;
-        if loop_count > 10 {
-            break;
-        } // Safety limit for tool loop
+    // Get the base system prompt for the chat
+    let system_prompt = get_system_prompt(Mode::Chat);
 
-        // Perform routing for each turn to adapt context and mode based on latest history
-        let cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| ".".to_string());
-        let decision = crate::router::route(prompt, &cwd, &app.router_config);
+    tracing::info!(
+        target: "chat_flow",
+        "Sending to AI: provider={}, model={}, message_count={}, prompt_length={}",
+        provider_name,
+        model,
+        app.session.messages.len(),
+        prompt.len()
+    );
 
-        let provider_name = app.session.provider.clone();
-        let model = app.session.model.clone();
+    let start_time = std::time::Instant::now();
 
-        // Map router mode to prompt mode
-        let prompt_mode = match decision.mode.as_str() {
-            "plan" => PromptMode::Plan,
-            "build" | "implement" | "execute" => PromptMode::Build,
-            _ => PromptMode::Chat,
-        };
-        let mut system_prompt = get_system_prompt(prompt_mode).to_string();
-
-        // Inject tools into the system prompt if in agentic mode
-        if prompt_mode != PromptMode::Chat {
-            let tool_registry = get_tools();
-            system_prompt = AGENT_SYSTEM_PROMPT
-                .replace("{{TOOLS_LIST}}", &tool_registry.list_tools())
-                .replace("{{TOOL_CALL_FORMAT}}", &tool_registry.tool_call_format());
-        }
-
-        tracing::info!(
-            target: "chat_flow",
-            "AI Turn {}: provider={}, model={}, intent={}, mode={:?}",
-            loop_count,
-            provider_name,
-            model,
-            decision.intent.as_str(),
-            prompt_mode
-        );
-
-        // Convert app messages to provider format
-        let mut messages: Vec<Message> = app
-            .session
-            .messages
-            .iter()
-            .take(app.session.messages.len().saturating_sub(1))
-            .map(|m| Message {
-                role: match m.role.as_str() {
-                    "user" => Role::User,
-                    "assistant" => Role::Assistant,
-                    "system" => Role::System,
-                    _ => Role::User,
-                },
-                content: m.content.clone(),
-                name: None,
-            })
-            .collect();
-
-        // Inject mode-optimized system prompt
-        messages.insert(
-            0,
-            Message {
-                role: Role::System,
-                content: system_prompt,
-                name: None,
+    // Convert app messages to provider format, excluding the empty placeholder for the current response
+    let messages: Vec<Message> = app
+        .session
+        .messages
+        .iter()
+        .take(app.session.messages.len().saturating_sub(1))
+        .map(|m| Message {
+            role: match m.role.as_str() {
+                "user" => Role::User,
+                "assistant" => Role::Assistant,
+                "system" => Role::System,
+                _ => Role::User,
             },
         );
 

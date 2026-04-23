@@ -114,8 +114,6 @@ pub struct App {
     pub auto_scroll: bool,
     /// RAG index for project context
     pub rag_index: RagIndex,
-    /// Glob patterns for indexing files
-    pub rag_include_patterns: Vec<String>,
     /// Current git branch
     pub git_branch: Option<String>,
     /// Last time the git branch was checked
@@ -160,11 +158,6 @@ impl App {
             history_index: None,
             auto_scroll: true,
             rag_index: RagIndex::new(RagConfig::default()),
-            rag_include_patterns: vec![
-                "src/**/*.rs".to_string(),
-                "src/**/*.md".to_string(),
-                "Cargo.toml".to_string(),
-            ],
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
         }
