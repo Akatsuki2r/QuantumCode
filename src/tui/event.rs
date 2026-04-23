@@ -216,6 +216,9 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
     let provider_name = app.session.provider.clone();
     let model = app.session.model.clone();
 
+    // Get the system prompt for the current mode
+    let system_prompt = get_system_prompt(Mode::Chat);
+
     tracing::info!(
         target: "chat_flow",
         "Sending to AI: provider={}, model={}, message_count={}, prompt_length={}",
@@ -349,7 +352,7 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                 let partial = &app.input[1..].to_lowercase();
                 let commands = [
                     "help", "clear", "quit", "exit", "provider", "model", "theme", "session",
-                    "config", "status", "version", "mode", "commit", "review", "test", "router",
+                    "config", "status", "version", "mode", "commit", "review", "test", "router", "rag",
                     "ollama",
                 ];
                 // Find the first command that starts with the partial
@@ -505,6 +508,27 @@ fn handle_slash_command(app: &mut App) -> Result<bool> {
             let count = app.rag_index.document_count();
             app.add_message("system", &format!("✓ Project re-indexed. Found {} files for RAG context.", count));
             app.set_status(None);
+            Ok(false)
+        }
+        "rag" => {
+            match arg {
+                Some("include") | Some("add") => {
+                    if let Some(pattern) = parts.get(2) {
+                        app.rag_include_patterns.push(pattern.to_string());
+                        app.add_message("system", &format!("✓ Added RAG glob pattern: {}", pattern));
+                        app.debug_log(&format!("RAG: Added inclusion pattern: {}", pattern));
+                    } else {
+                        app.add_message("system", "Usage: /rag include <pattern>");
+                    }
+                }
+                Some("list") | Some("ls") => {
+                    let patterns = app.rag_include_patterns.join("\n  • ");
+                    app.add_message("system", &format!("RAG Include Patterns:\n  • {}", patterns));
+                }
+                _ => {
+                    app.add_message("system", "RAG commands:\n  /rag include <pattern> - Add a glob pattern\n  /rag list              - Show current patterns\n  /refresh               - Re-index files using patterns");
+                }
+            }
             Ok(false)
         }
         "provider" | "p" => {

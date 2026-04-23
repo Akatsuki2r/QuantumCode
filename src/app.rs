@@ -1,7 +1,7 @@
 //! Application state management
 
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::config::settings::Settings;
@@ -112,6 +112,10 @@ pub struct App {
     pub history_index: Option<usize>,
     /// Whether to automatically scroll to the bottom
     pub auto_scroll: bool,
+    /// RAG index for project context
+    pub rag_index: RagIndex,
+    /// Glob patterns for indexing files
+    pub rag_include_patterns: Vec<String>,
     /// Current git branch
     pub git_branch: Option<String>,
     /// Last time the git branch was checked
@@ -155,6 +159,8 @@ impl App {
             input_history: Vec::new(),
             history_index: None,
             auto_scroll: true,
+            rag_index: RagIndex::new(RagConfig::default()),
+            rag_include_patterns: vec!["src/**/*.rs".to_string(), "src/**/*.md".to_string(), "Cargo.toml".to_string()],
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
         }
@@ -245,20 +251,28 @@ impl App {
         use std::path::Path;
 
         let base = Path::new(".");
-        // Find all Rust source files
-        if let Ok(matches) = find_files("src/**/*.rs", base) {
-            for path in matches {
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let path_str = path.to_string_lossy().to_string();
-                    self.index_file(path_str, content);
+        let mut paths_to_index = HashSet::new();
+
+        for pattern in &self.rag_include_patterns {
+            if let Ok(matches) = find_files(pattern, base) {
+                for path in matches {
+                    paths_to_index.insert(path);
                 }
             }
-            tracing::debug!(
-                target: "rag",
-                "Indexed {} files into RAG",
-                self.rag_index.document_count()
-            );
         }
+
+        for path in paths_to_index {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let path_str = path.to_string_lossy().to_string();
+                self.index_file(path_str, content);
+            }
+        }
+
+        tracing::debug!(
+            target: "rag",
+            "Indexed {} files into RAG",
+            self.rag_index.document_count()
+        );
     }
 
     /// Route a prompt through the router and automatically select model
