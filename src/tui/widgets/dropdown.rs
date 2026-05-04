@@ -1,6 +1,7 @@
 //! Dropdown selector widget for providers and models
 
 use crate::config::themes::RatatuiColors;
+use crate::providers::Provider;
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -122,6 +123,7 @@ impl DropdownSelector {
     fn default_providers() -> Vec<ProviderInfo> {
         // Get detected Ollama models if available
         let ollama_models = Self::get_detected_ollama_models();
+        let llama_cpp_models = Self::get_detected_llama_cpp_models();
 
         vec![
             ProviderInfo::new(

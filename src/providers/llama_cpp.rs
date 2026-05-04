@@ -217,7 +217,7 @@ impl Provider for LlamaCppProvider {
     ) -> Result<String, ProviderError> {
         // Ensure a model path is resolved before attempting to send
         let _ = self.resolved_model_path.as_ref().ok_or_else(|| {
-            ProviderError::ConfigurationError(format!(
+            ProviderError::ConfigError(format!(
                 "Model path for '{}' not resolved. Cannot send to llama.cpp server.",
                 self.model
             ))
@@ -276,7 +276,7 @@ impl Provider for LlamaCppProvider {
 
         // Ensure a model path is resolved before attempting to send
         let _ = self.resolved_model_path.as_ref().ok_or_else(|| {
-            ProviderError::ConfigurationError(format!(
+            ProviderError::ConfigError(format!(
                 "Model path for '{}' not resolved. Cannot stream from llama.cpp server.",
                 self.model
             ))

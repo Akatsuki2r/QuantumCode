@@ -154,6 +154,16 @@ impl App {
     pub fn new(settings: Settings, theme: Theme) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
+        let providers: Vec<Box<dyn Provider>> = vec![
+            Box::new(crate::providers::AnthropicProvider::new()),
+            Box::new(crate::providers::OpenAIProvider::new()),
+            Box::new(crate::providers::OllamaProvider::new()),
+            Box::new(crate::providers::LlamaCppProvider::new(settings.llama_cpp.clone())),
+            Box::new(crate::providers::LmStudioProvider::new()),
+            Box::new(crate::providers::GroqProvider::new()),
+            Box::new(crate::providers::GeminiProvider::new()),
+            Box::new(crate::providers::OpenCodeProvider::new()),
+        ];
 
         Self {
             settings,
@@ -168,23 +178,13 @@ impl App {
                 provider: "anthropic".to_string(),
                 model: "claude-sonnet-4-20250514".to_string(),
             },
-            providers: vec![
-                Box::new(crate::providers::AnthropicProvider::new()),
-                Box::new(crate::providers::OpenAIProvider::new()),
-                Box::new(crate::providers::OllamaProvider::new()),
-                Box::new(crate::providers::LlamaCppProvider::new(settings.llama_cpp.clone())),
-                Box::new(crate::providers::LmStudioProvider::new()),
-                Box::new(crate::providers::GroqProvider::new()),
-                Box::new(crate::providers::GeminiProvider::new()),
-                Box::new(crate::providers::OpenCodeProvider::new()),
-            ],
+            providers,
             mode: Mode::Chat,
             should_quit: false,
             input: String::new(),
             cursor_position: 0,
             scroll_offset: 0,
             status: None,
-            providers: Vec::new(),
             api_keys: HashMap::new(),
             dropdown: DropdownSelector::new(),
             router_config: RouterConfig::default(),
@@ -205,6 +205,7 @@ impl App {
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
             rag_include_patterns: vec!["src/**/*.rs".to_string()],
+            ai_response_rx: None,
         }
         .initialize()
     }
