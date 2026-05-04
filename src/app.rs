@@ -188,7 +188,7 @@ impl App {
             scroll_offset: 0,
             status: None,
             api_keys: HashMap::new(),
-            dropdown: DropdownSelector::new(),
+            dropdown: DropdownSelector::new(settings.llama_cpp.clone()), // Pass llama_cpp config
             router_config: RouterConfig::default(),
             router_enabled: true,
             debug_mode: false,

@@ -1,7 +1,8 @@
 //! Dropdown selector widget for providers and models
 
 use crate::config::themes::RatatuiColors;
-use crate::providers::Provider;
+use crate::config::settings::LlamaCppConfig;
+use crate::providers::provider_trait::Provider; // Import the Provider trait
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -59,10 +60,11 @@ pub struct DropdownSelector {
     pub api_key_env_var: String,
     pub pending_provider: Option<String>,
     pub pending_model: Option<String>,
+    llama_cpp_config: LlamaCppConfig, // Store LlamaCppConfig
 }
 
 impl DropdownSelector {
-    pub fn new() -> Self {
+    pub fn new(llama_cpp_config: LlamaCppConfig) -> Self {
         Self {
             providers: Self::default_providers(),
             state: DropdownState::Closed,
@@ -74,6 +76,7 @@ impl DropdownSelector {
             api_key_env_var: String::new(),
             pending_provider: None,
             pending_model: None,
+            llama_cpp_config,
         }
     }
 
@@ -120,10 +123,10 @@ impl DropdownSelector {
         }
     }
 
-    fn default_providers() -> Vec<ProviderInfo> {
+    fn default_providers(llama_cpp_config: &LlamaCppConfig) -> Vec<ProviderInfo> {
         // Get detected Ollama models if available
         let ollama_models = Self::get_detected_ollama_models();
-        let llama_cpp_models = Self::get_detected_llama_cpp_models();
+        let llama_cpp_models = Self::get_detected_llama_cpp_models(llama_cpp_config);
 
         vec![
             ProviderInfo::new(
@@ -246,11 +249,10 @@ impl DropdownSelector {
     }
 
     /// Get detected llama.cpp models from local discovery
-    fn get_detected_llama_cpp_models() -> Vec<String> {
-        // This should ideally use the LlamaCppConfig from the App's settings.
-        // For now, we use a default LlamaCppProvider to get its model list.
-        let provider = crate::providers::LlamaCppProvider::default();
+    fn get_detected_llama_cpp_models(config: &LlamaCppConfig) -> Vec<String> {
+        let provider = crate::providers::LlamaCppProvider::new(config.clone());
         let models = provider.models();
+
         if !models.is_empty() {
             return models;
         }
@@ -621,7 +623,7 @@ impl DropdownSelector {
 
 impl Default for DropdownSelector {
     fn default() -> Self {
-        Self::new()
+        Self::new(LlamaCppConfig::default()) // Fallback default config
     }
 }
 
