@@ -532,12 +532,7 @@ impl Session {
 
     /// Get the path where a session should be stored
     fn get_storage_path(id: &str) -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home)
-            .join(".config")
-            .join("quantumn-code")
-            .join("sessions")
-            .join(format!("{}.json", id))
+        crate::utils::paths::get_session_path(id)
     }
 
     /// Save the session to disk as a JSON file
@@ -564,8 +559,7 @@ impl Session {
 
     /// List all saved sessions from the storage directory
     pub fn list() -> Vec<Session> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let dir = PathBuf::from(home).join(".config/quantumn-code/sessions");
+        let dir = crate::utils::paths::get_sessions_dir();
         let mut sessions = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(dir) {

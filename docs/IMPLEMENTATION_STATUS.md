@@ -13,11 +13,11 @@ This document tracks what's implemented vs what's planned for Quantum Code. Last
 | Local LLM Discovery | Implemented | 85% |
 | TUI (Basic) | Implemented | 80% |
 | Dropdown Widget | Implemented | 90% |
-| RAG System | Partial | 40% |
+| RAG System | Partial | 65% |
 | Prompt Compaction | Implemented | 70% |
 | Tool System | Implemented | 85% |
 | Agent Executor | Partial | 60% |
-| Session Management | Implemented | 75% |
+| Session Management | Implemented | 95% |
 | Git Integration | Implemented | 80% |
 
 ## Router Implementation

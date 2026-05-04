@@ -7,8 +7,7 @@ This document identifies performance bottlenecks, architectural weaknesses, and 
 ## Critical Choke Points
 
 ### 1. Router-Agent Disconnection
-
-**Severity**: HIGH
+**Severity**: MEDIUM (Improving)
 **File**: `src/router/mod.rs`, `src/agent/executor.rs`
 
 **Problem**: The router makes sophisticated routing decisions, but the agent executor doesn't fully utilize them. The router output is not piped into the agent's execution loop.
