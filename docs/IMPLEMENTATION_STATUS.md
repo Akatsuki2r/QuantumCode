@@ -72,12 +72,12 @@ This document tracks what's implemented vs what's planned for Quantum Code. Last
 - [x] Memory hints
 - **Status**: Complete
 
-### Router Integration
-- [x] Main `route()` function
-- [x] Confidence calculation
-- [x] Reasoning generation
-- [x] RouterConfig struct
-- [ ] Integration with agent/executor
+### Router & Integration
+- [x] Main `route()` function wired to `AgentExecutor`
+- [x] Confidence calculation and reasoning
+- [x] RouterConfig struct and defaults
+- [x] Integration in `app.rs:route_prompt()`
+- [ ] Tool policy enforcement in tool execution loop
 - **Status**: 95% Complete
 
 ## Provider System

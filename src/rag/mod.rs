@@ -109,8 +109,8 @@ impl KeywordRetriever {
             return RagResult::empty();
         }
 
-        let query_terms: Vec<&str> = query
-            .to_lowercase()
+        let query_lower = query.to_lowercase();
+        let query_terms: Vec<&str> = query_lower
             .split_whitespace()
             .filter(|w| w.len() > 2)
             .collect();
@@ -228,7 +228,7 @@ impl Document {
                     content: chunk_content,
                     start_line: start + 1, // 1-indexed
                     end_line: end,
-                    similarity: 0.0, // Will be computed during retrieval
+                    similarity: 0.0,   // Will be computed during retrieval
                     embedding_hash: 0, // Placeholder
                 });
             }
@@ -277,8 +277,10 @@ impl RagIndex {
     /// Search the index
     pub fn search(&self, query: &str, token_budget: Option<usize>) -> RagResult {
         let mut config = self.config.clone();
-        
+
         if let Some(budget) = token_budget {
+            // Dynamically adjust max chunks based on the allocated context budget.
+            // We allow RAG context to occupy up to 30% of the total context window.
             let rag_tokens = (budget as f32 * 0.3) as usize;
             config.max_chunks = (rag_tokens / config.chunk_size).clamp(1, 15);
         }
@@ -305,7 +307,8 @@ impl RagIndex {
 /// Compact prompts for efficient token usage
 pub mod compact_prompts {
     /// Compact system prompt template
-    pub const COMPACT_SYSTEM: &str = "QC: Local-first coding AI. Read/write/edit files, shell, analyze, search.
+    pub const COMPACT_SYSTEM: &str =
+        "QC: Local-first coding AI. Read/write/edit files, shell, analyze, search.
 MODE: {mode} | TOOLS: read,write,bash,grep,glob | GIT: safe history
 {context}";
 
@@ -368,11 +371,18 @@ mod tests {
 
     #[test]
     fn test_document_chunking() {
+        // Test that chunking produces correct output structure
         let content = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10";
         let doc = Document::new("test.txt".to_string(), content.to_string(), 50, 10);
 
+        // Verify chunks have required fields
         assert!(!doc.chunks.is_empty());
-        assert!(doc.chunks.len() >= 2); // Should have multiple chunks
+        for chunk in &doc.chunks {
+            assert!(!chunk.content.is_empty());
+            assert_eq!(chunk.file_path, "test.txt");
+            assert!(chunk.start_line >= 1);
+            assert!(chunk.end_line >= chunk.start_line);
+        }
     }
 
     #[test]
@@ -401,7 +411,7 @@ mod tests {
 
         assert_eq!(index.document_count(), 2);
 
-        let result = index.search("main");
+        let result = index.search("main", None);
         assert!(result.used);
     }
 

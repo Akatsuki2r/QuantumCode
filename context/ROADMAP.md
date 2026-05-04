@@ -46,13 +46,14 @@ The MVP provides:
 #### 1. Router-Agent Integration
 **Priority**: Critical
 **Effort**: 4-8 hours
-**Status**: Not Started
+**Status**: In Progress (Partially Resolved)
 
 Connect router decisions to agent execution:
 - Mode affects tool access and prompt shaping
 - Model tier selection actually changes the model used
-- Tool policies are enforced
-- Context budget is respected
+* [x] Router wired to `AgentExecutor` loop
+* [ ] Tool policies enforced via `is_tool_allowed()`
+* [ ] Context budget enforced on message history
 
 **Acceptance Criteria**:
 - Router decision affects agent behavior
@@ -64,7 +65,7 @@ Connect router decisions to agent execution:
 #### 2. RAG Integration
 **Priority**: Critical
 **Effort**: 8-16 hours
-**Status**: Not Started
+**Status**: In Progress
 
 Integrate RAG retrieval into the agent workflow:
 - Auto-index project files on startup
@@ -82,7 +83,7 @@ Integrate RAG retrieval into the agent workflow:
 #### 3. Tool Execution
 **Priority**: Critical
 **Effort**: 16-24 hours
-**Status**: Not Started
+**Status**: In Progress
 
 Full tool execution loop:
 - Parse tool calls from AI responses

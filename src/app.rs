@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -131,14 +131,14 @@ pub struct App {
     pub history_index: Option<usize>,
     /// Whether to automatically scroll to the bottom
     pub auto_scroll: bool,
+    /// RAG index for project context
+    pub rag_index: RagIndex,
     /// Current git branch
     pub git_branch: Option<String>,
     /// Last time the git branch was checked
     pub last_git_check: Instant,
-    /// Receiver for async AI responses to prevent UI blocking
-    pub ai_response_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AiEvent>>,
-    /// RAG index for codebase context
-    pub rag_index: RagIndex,
+    /// Glob patterns for RAG indexing
+    pub rag_include_patterns: Vec<String>,
 }
 
 impl App {
@@ -181,11 +181,19 @@ impl App {
             input_history: Vec::new(),
             history_index: None,
             auto_scroll: true,
+            rag_index: RagIndex::new(RagConfig::default()),
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
-            ai_response_rx: None,
-            rag_index: RagIndex::new(RagConfig::default()),
+            rag_include_patterns: vec!["src/**/*.rs".to_string()],
         }
+        .initialize()
+    }
+
+    /// Initialize application state (e.g., startup indexing)
+    fn initialize(mut self) -> Self {
+        self.debug_log("System: Initializing RAG index...");
+        self.index_project_files();
+        self
     }
 
     /// Update git branch if enough time has passed (30s throttle)
@@ -249,6 +257,47 @@ impl App {
         }
     }
 
+    /// Search the RAG index for relevant context
+    /// Uses the provided token budget to limit the number of retrieved chunks.
+    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
+        self.rag_index.search(query, token_budget)
+    }
+
+    /// Add a file to the RAG index
+    pub fn index_file(&mut self, path: String, content: String) {
+        self.rag_index.add_document(path, content);
+    }
+
+    /// Index all Rust source files in the current project
+    pub fn index_project_files(&mut self) {
+        use crate::tools::glob::find_files;
+        use std::path::Path;
+
+        let base = Path::new(".");
+        let mut paths_to_index = HashSet::new();
+
+        for pattern in &self.rag_include_patterns {
+            if let Ok(matches) = find_files(pattern, base) {
+                for path in matches {
+                    paths_to_index.insert(path);
+                }
+            }
+        }
+
+        for path in paths_to_index {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let path_str = path.to_string_lossy().to_string();
+                self.index_file(path_str, content);
+            }
+        }
+
+        tracing::debug!(
+            target: "rag",
+            "Indexed {} files into RAG",
+            self.rag_index.document_count()
+        );
+    }
+
     /// Route a prompt through the router and automatically select model
     /// Returns (provider, model) pair based on router decision
     pub fn route_prompt(&mut self, prompt: &str) -> (String, String) {
@@ -304,10 +353,11 @@ impl App {
                 if crate::router::model::has_local_models() {
                     "ollama".to_string()
                 } else {
-                    // Fall back to fast tier if no local models
-                    "anthropic".to_string()
+                    // Fall back to opencode if no local models
+                    "opencode".to_string()
                 }
             }
+            crate::router::ModelTier::OpenCode => "opencode".to_string(),
             crate::router::ModelTier::Fast => "anthropic".to_string(),
             crate::router::ModelTier::Standard => "anthropic".to_string(),
             crate::router::ModelTier::Capable => "anthropic".to_string(),
@@ -473,12 +523,41 @@ impl App {
         text.len() / 4
     }
 
+    /// Enforce a token budget on message history by removing oldest messages
+    pub fn enforce_context_budget(&mut self, max_tokens: usize) {
+        if self.session.messages.is_empty() {
+            return;
+        }
+
+        let mut current_total = 0;
+        let mut to_keep = Vec::new();
+
+        // Work backwards to keep the most recent messages
+        for msg in self.session.messages.iter().rev() {
+            // Use existing token count or estimate if missing
+            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
+            if current_total + tokens <= max_tokens {
+                current_total += tokens;
+                to_keep.push(msg.clone());
+            } else {
+                break;
+            }
+        }
+
+        if to_keep.len() < self.session.messages.len() {
+            to_keep.reverse(); // Restore original order
+            let removed = self.session.messages.len() - to_keep.len();
+            tracing::info!(target: "app", "Trimmed {} messages to stay within {} token budget", removed, max_tokens);
+            self.session.messages = to_keep;
+        }
+    }
+
     /// Save the current session to disk
     pub fn save_session(&self) -> std::io::Result<()> {
         self.session.save()
     }
 
-    /// Load a session from disk
+    /// Load a session from disk and set it as the current session
     pub fn load_session(&mut self, id: &str) -> std::io::Result<()> {
         let session = Session::load(id)?;
         self.session = session;
@@ -486,57 +565,6 @@ impl App {
         self.auto_scroll = true;
         self.status = Some(format!("Loaded session: {}", id));
         Ok(())
-    }
-
-    /// Search the RAG index for relevant context with a token budget
-    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
-        self.rag_index.search(query, token_budget)
-    }
-}
-
-impl Session {
-    fn get_storage_path(id: &str) -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home)
-            .join(".config")
-            .join("quantumn-code")
-            .join("sessions")
-            .join(format!("{}.json", id))
-    }
-
-    pub fn save(&self) -> std::io::Result<()> {
-        let path = Self::get_storage_path(&self.id);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        std::fs::write(&path, json)?; // Fix: borrow path to avoid move error
-        tracing::info!("Session saved successfully to {:?}", path);
-        Ok(())
-    }
-
-    pub fn load(id: &str) -> std::io::Result<Self> {
-        let path = Self::get_storage_path(id);
-        let json = std::fs::read_to_string(path)?;
-        serde_json::from_str(&json).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    }
-
-    pub fn list() -> Vec<Session> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let dir = PathBuf::from(home).join(".config/quantumn-code/sessions");
-        let mut sessions = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                    if let Ok(session) = serde_json::from_str::<Session>(&content) {
-                        sessions.push(session);
-                    }
-                }
-            }
-        }
-        sessions.sort_by(|a, b| b.updated.cmp(&a.updated));
-        sessions
     }
 }
 
@@ -556,6 +584,58 @@ impl Session {
             provider: "anthropic".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
         }
+    }
+
+    /// Get the path where a session should be stored
+    fn get_storage_path(id: &str) -> PathBuf {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home)
+            .join(".config")
+            .join("quantumn-code")
+            .join("sessions")
+            .join(format!("{}.json", id))
+    }
+
+    /// Save the session to disk as a JSON file
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Self::get_storage_path(&self.id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(&path, json)?;
+        tracing::info!("Session saved successfully to {:?}", path);
+        Ok(())
+    }
+
+    /// Load a session from disk by its ID
+    pub fn load(id: &str) -> std::io::Result<Self> {
+        let path = Self::get_storage_path(id);
+        let json = std::fs::read_to_string(path)?;
+        let session: Session = serde_json::from_str(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        Ok(session)
+    }
+
+    /// List all saved sessions from the storage directory
+    pub fn list() -> Vec<Session> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let dir = PathBuf::from(home).join(".config/quantumn-code/sessions");
+        let mut sessions = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    if let Ok(session) = serde_json::from_str::<Session>(&content) {
+                        sessions.push(session);
+                    }
+                }
+            }
+        }
+        // Sort by most recently updated first
+        sessions.sort_by(|a, b| b.updated.cmp(&a.updated));
+        sessions
     }
 
     /// Create a named session
