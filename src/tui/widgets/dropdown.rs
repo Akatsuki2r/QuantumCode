@@ -65,8 +65,10 @@ pub struct DropdownSelector {
 
 impl DropdownSelector {
     pub fn new(llama_cpp_config: LlamaCppConfig) -> Self {
+        let providers = Self::default_providers(&llama_cpp_config);
+
         Self {
-            providers: Self::default_providers(),
+            providers,
             state: DropdownState::Closed,
             provider_index: 0,
             model_index: 0,

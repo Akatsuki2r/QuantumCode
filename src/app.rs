@@ -154,12 +154,13 @@ impl App {
     pub fn new(settings: Settings, theme: Theme) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
+        let llama_cpp_config = settings.llama_cpp.clone();
         let providers: Vec<Box<dyn Provider>> = vec![
             Box::new(crate::providers::AnthropicProvider::new()),
             Box::new(crate::providers::OpenAIProvider::new()),
             Box::new(crate::providers::OllamaProvider::new()),
             Box::new(crate::providers::LlamaCppProvider::new(
-                settings.llama_cpp.clone(),
+                llama_cpp_config.clone(),
             )),
             Box::new(crate::providers::LmStudioProvider::new()),
             Box::new(crate::providers::GroqProvider::new()),
@@ -188,7 +189,7 @@ impl App {
             scroll_offset: 0,
             status: None,
             api_keys: HashMap::new(),
-            dropdown: DropdownSelector::new(settings.llama_cpp.clone()), // Pass llama_cpp config
+            dropdown: DropdownSelector::new(llama_cpp_config),
             router_config: RouterConfig::default(),
             router_enabled: true,
             debug_mode: false,
