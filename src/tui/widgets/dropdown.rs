@@ -1,7 +1,7 @@
 //! Dropdown selector widget for providers and models
 
-use crate::config::themes::RatatuiColors;
 use crate::config::settings::LlamaCppConfig;
+use crate::config::themes::RatatuiColors;
 use crate::providers::provider_trait::Provider; // Import the Provider trait
 use ratatui::{
     prelude::*,
