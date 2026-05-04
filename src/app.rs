@@ -239,7 +239,11 @@ impl App {
 
     /// Search the RAG index for relevant context
     /// Uses the provided token budget to limit the number of retrieved chunks.
-    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
+    pub fn search_context(
+        &self,
+        query: &str,
+        token_budget: Option<usize>,
+    ) -> crate::rag::RagResult {
         self.rag_index.search(query, token_budget)
     }
 
@@ -444,7 +448,9 @@ impl App {
         // Work backwards to keep the most recent messages
         for msg in self.session.messages.iter().rev() {
             // Use existing token count or estimate if missing
-            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
+            let tokens = msg
+                .tokens
+                .unwrap_or_else(|| Self::estimate_tokens(&msg.content));
             if current_total + tokens <= max_tokens {
                 current_total += tokens;
                 to_keep.push(msg.clone());
