@@ -314,6 +314,9 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                     // Route the prompt through the router for automatic model selection
                     let (selected_provider, selected_model) = app.route_prompt(&prompt);
 
+                    // Note: app.route_prompt already calls enforce_context_budget internally.
+                    // We just need to ensure the logic here respects the new mutable signature.
+
                     // Update session with selected provider/model
                     app.session.provider = selected_provider.clone();
                     app.session.model = selected_model.clone();
