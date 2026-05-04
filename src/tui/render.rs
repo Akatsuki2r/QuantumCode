@@ -34,21 +34,31 @@ pub fn create_layout(frame: &Frame) -> Rect {
 
 /// Main render function
 pub fn render(frame: &mut Frame, app: &App) {
-    // Create theme colors
-    let colors = match app.theme.colors.to_ratatui() {
-        Ok(c) => c,
-        Err(_) => {
-            let default_theme = Theme::default_theme();
-            default_theme.colors.to_ratatui().unwrap()
-        }
-    };
+    // In a production app, these should be cached in App state to avoid re-calculation every frame
+    let colors = app
+        .theme
+        .colors
+        .to_ratatui()
+        .unwrap_or_else(|_| Theme::default_theme().colors.to_ratatui().unwrap());
 
     // Clear the entire area to prevent ghosting/artifacts from previous frames
     frame.render_widget(Clear, frame.area());
 
+    // Split layout into Chat area and optional side panel
+    let area = frame.area();
+    let main_layout = if app.show_debug_panel {
+        Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(45), // Fixed width side panel
+        ])
+        .split(area)
+    } else {
+        Layout::horizontal([Constraint::Percentage(100)]).split(area)
+    };
+
+    let chat_area = main_layout[0];
+
     // Intent-driven layout: focus on the conversation
-    // Only allocate space for suggestion bar if there's content to show
-    // Don't show empty state hint - it wastes space and can cause layout issues
     let has_suggestions = !app.input.is_empty();
     let suggestion_height = if has_suggestions { 2 } else { 0 };
 
@@ -58,7 +68,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         Constraint::Length(suggestion_height), // Suggestion bar (conditional)
         Constraint::Length(1),                 // Status bar
     ])
-    .split(frame.area());
+    .split(chat_area);
 
     render_chat(frame, chunks[0], app, &colors);
     render_input(frame, chunks[1], app, &colors);
@@ -66,6 +76,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         render_suggestions(frame, chunks[2], app, &colors);
     }
     render_status_bar(frame, chunks[3], app, &colors);
+
+    // Render the Thought Process / Debug panel if active
+    if app.show_debug_panel {
+        render_debug_panel(frame, main_layout[1], app, &colors);
+    }
 
     // Conditionally render overlays
     if matches!(app.mode, Mode::Focus) {
@@ -87,6 +102,41 @@ pub fn render(frame: &mut Frame, app: &App) {
         frame.render_widget(Clear, dropdown_area);
         app.dropdown.render(frame, dropdown_area, &colors);
     }
+}
+
+/// Render the Thought Process / Debug panel
+fn render_debug_panel(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    colors: &crate::config::themes::RatatuiColors,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(colors.accent))
+        .title(" Thought Process / Activity ");
+
+    let inner_area = block.inner(area);
+
+    let logs: Vec<Line> = app
+        .ui_debug_logs
+        .iter()
+        .map(|log| Line::from(Span::styled(log, Style::default().fg(colors.foreground))))
+        .collect();
+
+    let total_lines = logs.len();
+    let visible_height = inner_area.height as usize;
+    let max_scroll = total_lines.saturating_sub(visible_height);
+
+    let scroll_offset = if app.debug_auto_scroll {
+        max_scroll
+    } else {
+        app.debug_scroll_offset.min(max_scroll)
+    } as u16;
+
+    let paragraph = Paragraph::new(logs).block(block).scroll((scroll_offset, 0));
+
+    frame.render_widget(paragraph, area);
 }
 
 /// Center a rect within another rect
@@ -115,6 +165,21 @@ fn render_status_bar(
         ),
         Style::default().fg(colors.background).bg(colors.accent),
     )];
+
+    // Add loading animation if AI is responding
+    if app.ai_response_rx.is_some() {
+        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let index = (now / 100) as usize % spinner.len();
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            spinner[index],
+            Style::default().fg(colors.accent).bold(),
+        ));
+    }
 
     if let Some(ref branch) = app.git_branch {
         spans.push(Span::raw(" "));
@@ -177,7 +242,6 @@ fn render_chat(
         w if w < 100 => 4,
         _ => 6,
     } as usize;
-    let padding = " ".repeat(padding_width);
 
     // Build list of messages
     let messages: Vec<Line> = app
@@ -185,34 +249,28 @@ fn render_chat(
         .messages
         .iter()
         .flat_map(|msg| {
-            let role_style = match msg.role.as_str() {
-                "user" => Style::default().fg(colors.accent),
-                "assistant" => Style::default().fg(colors.success),
-                _ => Style::default().fg(colors.muted),
-            };
-
-            let role_icon = match msg.role.as_str() {
-                "user" => "󰭹 ",
-                "assistant" => "󰚩 ",
-                _ => "󱐋 ",
+            let (role_icon, role_style) = match msg.role.as_str() {
+                "user" => ("󰭹 ", Style::default().fg(colors.accent)),
+                "assistant" => ("󰚩 ", Style::default().fg(colors.success)),
+                _ => ("󱐋 ", Style::default().fg(colors.muted)),
             };
 
             let mut lines = Vec::new();
             let mut in_code_block = false;
+            let wrap_width = inner_area.width.saturating_sub(padding_width as u16 + 4) as usize;
 
             for line in msg.content.lines() {
-                // Detect code block delimiters
                 if line.trim().starts_with("```") {
                     in_code_block = !in_code_block;
                     let border = if in_code_block {
-                        format!("┌── Code {}", line.trim().trim_start_matches("```"))
+                        "┌── Code Block"
                     } else {
-                        "└───────".to_string()
+                        "└───────"
                     };
-                    lines.push(Line::from(Span::styled(
-                        format!("{}{}", padding, border),
-                        Style::default().fg(colors.muted).italic(),
-                    )));
+                    lines.push(Line::from(vec![
+                        Span::raw(" ".repeat(padding_width)),
+                        Span::styled(border, Style::default().fg(colors.muted).italic()),
+                    ]));
                     continue;
                 }
 
@@ -223,24 +281,20 @@ fn render_chat(
                     Style::default().fg(colors.foreground)
                 };
 
-                // Add slight indentation for code or specific style
-                let display_line = if in_code_block {
-                    format!("│ {}", line)
-                } else {
-                    line.to_string()
-                };
-                let wrap_width = inner_area.width.saturating_sub(padding_width as u16) as usize;
+                let prefix = if in_code_block { "│ " } else { "" };
 
-                for wrapped in textwrap::wrap(&display_line, wrap_width) {
-                    lines.push(Line::from(Span::styled(
-                        format!("{}{}", padding, wrapped),
-                        style,
-                    )));
+                // Optimization: textwrap::wrap is expensive, in a full implementation we would cache this
+                for wrapped in textwrap::wrap(line, wrap_width) {
+                    lines.push(Line::from(vec![
+                        Span::raw(" ".repeat(padding_width)),
+                        Span::raw(prefix),
+                        Span::styled(wrapped.into_owned(), style),
+                    ]));
                 }
             }
 
             let mut result = vec![Line::from(vec![
-                Span::raw(padding.clone()),
+                Span::raw(" ".repeat(padding_width)),
                 Span::styled(role_icon, role_style),
             ])];
             result.extend(lines);
@@ -409,6 +463,8 @@ fn render_help(
         Line::from("  Ctrl+S      - Save session"),
         Line::from("  F1          - Toggle help"),
         Line::from("  Ctrl+K      - Open Command Palette"),
+        Line::from("  Ctrl+O      - Toggle Thought Process panel"),
+        Line::from("  Alt+↑↓      - Scroll Thought Process panel"),
         Line::from("  /           - Slash commands in chat"),
         Line::from("  P           - Open provider selector"),
         Line::from("  ←→         - Switch tabs"),

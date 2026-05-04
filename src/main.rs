@@ -35,6 +35,9 @@ fn main() -> Result<()> {
     // Initialize error handling
     color_eyre::install()?;
 
+    // Load environment variables from .env file
+    dotenvy::dotenv().ok();
+
     // Parse CLI arguments
     let cli = Cli::parse();
 
