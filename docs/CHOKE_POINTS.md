@@ -7,8 +7,7 @@ This document identifies performance bottlenecks, architectural weaknesses, and 
 ## Critical Choke Points
 
 ### 1. Router-Agent Disconnection
-
-**Severity**: HIGH
+**Severity**: MEDIUM (Improving)
 **File**: `src/router/mod.rs`, `src/agent/executor.rs`
 
 **Problem**: The router makes sophisticated routing decisions, but the agent executor doesn't fully utilize them. The router output is not piped into the agent's execution loop.
@@ -65,7 +64,7 @@ let rag_index = RagIndex::new(RagConfig::default());
 - Reduced response quality for codebase questions
 
 **Fix Required**:
-1. Populate RAG index on startup (scan project files)
+1. [x] Populate RAG index on startup (scan project files)
 2. Query RAG before sending prompt to LLM
 3. Augment prompt with retrieved context
 4. Handle RAG failures gracefully
