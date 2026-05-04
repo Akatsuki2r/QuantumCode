@@ -229,6 +229,9 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
             .unwrap_or_else(|_| ".".to_string());
         let decision = crate::router::route(prompt, &cwd, &app.router_config);
 
+        // Enforce context budget calculated by the router
+        app.enforce_context_budget(decision.context_budget.tokens());
+
         let provider_name = app.session.provider.clone();
         let model = app.session.model.clone();
 
