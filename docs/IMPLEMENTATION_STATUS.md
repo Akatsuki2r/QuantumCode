@@ -148,7 +148,7 @@ This document tracks what's implemented vs what's planned for Quantum Code. Last
 - [ ] Embedding vector generation
 - [ ] Cosine similarity calculation
 - [ ] Persistent document store
-- [ ] Automatic file watching/indexing
+- [x] Automatic file indexing on startup
 - [ ] Integration with agent
 - [ ] Code-specific embeddings
 - [ ] Cross-file context retrieval

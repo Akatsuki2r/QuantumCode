@@ -13,6 +13,33 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
     // Background maintenance
     app.update_git_status();
 
+    // Process background AI updates
+    let mut finished = false;
+    // Take the receiver out of the app state to avoid double mutable borrowing
+    if let Some(mut rx) = app.ai_response_rx.take() {
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                crate::app::AiEvent::Chunk(content) => {
+                    if let Some(msg) = app.session.messages.last_mut() {
+                        msg.content = content;
+                    }
+                }
+                crate::app::AiEvent::Error(err) => {
+                    app.add_message("system", &format!("✗ Error: {}", err));
+                    finished = true;
+                }
+                crate::app::AiEvent::Done => {
+                    finished = true;
+                }
+            }
+        }
+
+        // Put the receiver back if the stream is still active
+        if !finished {
+            app.ai_response_rx = Some(rx);
+        }
+    }
+
     if crossterm::event::poll(Duration::from_millis(100))? {
         match crossterm::event::read()? {
             Event::Key(key) => {
@@ -214,83 +241,56 @@ fn handle_focus_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<b
     }
 }
 
-/// Send a message to the AI provider and get a response
-async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    use crate::providers::{Message, Provider, Role};
-
-    let provider_name = app.session.provider.clone();
-    let model = app.session.model.clone();
+/// Task to handle AI request in the background
+async fn perform_ai_request(
+    provider_name: String,
+    model: String,
+    messages: Vec<crate::providers::Message>,
+    tx: tokio::sync::mpsc::UnboundedSender<crate::app::AiEvent>,
+) {
+    use crate::providers::Provider;
+    use crate::app::AiEvent;
 
     tracing::info!(
         target: "chat_flow",
-        "Sending to AI: provider={}, model={}, message_count={}, prompt_length={}",
-        provider_name,
-        model,
-        app.session.messages.len(),
-        prompt.len()
+        "Background AI request: provider={}, model={}, msg_count={}",
+        provider_name, model, messages.len()
     );
 
-    let start_time = std::time::Instant::now();
-
-    // Convert app messages to provider format, excluding the empty placeholder for the current response
-    let messages: Vec<Message> = app
-        .session
-        .messages
-        .iter()
-        .take(app.session.messages.len().saturating_sub(1))
-        .map(|m| Message {
-            role: match m.role.as_str() {
-                "user" => Role::User,
-                "assistant" => Role::Assistant,
-                "system" => Role::System,
-                _ => Role::User,
-            },
-            content: m.content.clone(),
-            name: None,
-        })
-        .collect();
-
-    tracing::debug!(
-        target: "chat_flow",
-        "Converted {} messages to provider format",
-        messages.len()
-    );
-
-    // Create appropriate provider and send
     let mut full_response = String::new();
 
     match provider_name.as_str() {
         "ollama" => {
             let provider = crate::providers::OllamaProvider::with_model(model);
-            // Explicitly type the stream and remove the '?' since send_stream returns the stream itself
-            let mut stream: std::pin::Pin<
-                Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>,
-            > = provider.send_stream(messages).await;
+            let mut stream = provider.send_stream(messages).await;
 
             while let Some(chunk_result) = stream.next().await {
                 if let Ok(chunk) = chunk_result {
                     full_response.push_str(&chunk.content);
-                    // Update the last message in real-time for the UI to render
-                    if let Some(msg) = app.session.messages.last_mut() {
-                        msg.content = full_response.clone();
-                    }
+                    let _ = tx.send(AiEvent::Chunk(full_response.clone()));
+                } else if let Err(e) = chunk_result {
+                    let _ = tx.send(AiEvent::Error(e.to_string()));
                 }
             }
+            let _ = tx.send(AiEvent::Done);
         }
         "anthropic" => {
             let mut provider = crate::providers::AnthropicProvider::new();
             provider.set_model(model);
-            if let Ok(response) = provider.send(messages).await {
-                full_response = response;
-                if let Some(msg) = app.session.messages.last_mut() {
-                    msg.content = full_response.clone();
+            match provider.send(messages).await {
+                Ok(response) => {
+                    let _ = tx.send(AiEvent::Chunk(response));
+                    let _ = tx.send(AiEvent::Done);
+                }
+                Err(e) => {
+                    let _ = tx.send(AiEvent::Error(e.to_string()));
                 }
             }
         }
-        _ => return Err(format!("Unknown provider: {}", provider_name).into()),
+        _ => {
+            let _ = tx.send(AiEvent::Error(format!("Unknown provider: {}", provider_name)));
+        }
     };
-
-    Ok(full_response)
 }
 
 /// Handle normal mode input (async for AI responses)
@@ -342,7 +342,32 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
 
                     // Initialize assistant message for streaming
                     app.add_message("assistant", "");
-                    let _ = send_to_ai(app, &prompt).await;
+
+                    // Setup async communication channel
+                    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.ai_response_rx = Some(rx);
+
+                    // Prepare data for the background task
+                    let provider_name = app.session.provider.clone();
+                    let model = app.session.model.clone();
+                    let messages: Vec<crate::providers::Message> = app
+                        .session
+                        .messages
+                        .iter()
+                        .take(app.session.messages.len().saturating_sub(1))
+                        .map(|m| crate::providers::Message {
+                            role: match m.role.as_str() {
+                                "user" => crate::providers::Role::User,
+                                "assistant" => crate::providers::Role::Assistant,
+                                "system" => crate::providers::Role::System,
+                                _ => crate::providers::Role::User,
+                            },
+                            content: m.content.clone(),
+                            name: None,
+                        })
+                        .collect();
+
+                    tokio::spawn(perform_ai_request(provider_name, model, messages, tx));
                 }
             }
             Ok(false)

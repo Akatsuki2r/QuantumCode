@@ -65,7 +65,7 @@ let rag_index = RagIndex::new(RagConfig::default());
 - Reduced response quality for codebase questions
 
 **Fix Required**:
-1. Populate RAG index on startup (scan project files)
+1. [x] Populate RAG index on startup (scan project files)
 2. Query RAG before sending prompt to LLM
 3. Augment prompt with retrieved context
 4. Handle RAG failures gracefully

@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::config::settings::Settings;
 use crate::config::themes::Theme;
 use crate::providers::Provider;
+use crate::rag::{RagConfig, RagIndex};
 use crate::router::RouterConfig;
 use crate::tui::widgets::{DropdownSelector, KanbanBoard, TabBar};
 use ratatui::widgets::ListState;
@@ -20,6 +21,17 @@ pub enum Mode {
     Command,
     /// Focused on a specific task or full-screen overlay (e.g., help, focus work)
     Focus,
+}
+
+/// Events for async AI interaction
+#[derive(Debug)]
+pub enum AiEvent {
+    /// Partial content chunk received
+    Chunk(String),
+    /// Error occurred during streaming
+    Error(String),
+    /// Streaming completed
+    Done,
 }
 
 /// A single message in the conversation
@@ -121,6 +133,10 @@ pub struct App {
     pub git_branch: Option<String>,
     /// Last time the git branch was checked
     pub last_git_check: Instant,
+    /// Receiver for async AI responses to prevent UI blocking
+    pub ai_response_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AiEvent>>,
+    /// RAG index for codebase context
+    pub rag_index: RagIndex,
 }
 
 impl App {
@@ -165,6 +181,8 @@ impl App {
             auto_scroll: true,
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
+            ai_response_rx: None,
+            rag_index: RagIndex::new(RagConfig::default()),
         }
     }
 
@@ -297,6 +315,49 @@ impl App {
         );
 
         (provider, model)
+    }
+
+    /// Index project files for RAG
+    pub fn index_project_files(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+        tracing::info!("Indexing project files in {:?}", cwd);
+
+        // Traverse the filesystem starting from current directory using walkdir
+        for entry in walkdir::WalkDir::new(&cwd)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                // Ignore hidden directories (.git, .vscode, etc) and common build artifacts
+                !name.starts_with('.') && name != "target" && name != "node_modules" && name != "dist"
+            })
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                let path = entry.path();
+                
+                // Filter for relevant text files to avoid binary noise in RAG
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                let supported = [
+                    "rs", "toml", "md", "txt", "js", "ts", "py", "c", "cpp", "h", "json", "sh", "yaml", "yml"
+                ];
+
+                if supported.contains(&ext) {
+                    if let Ok(content) = std::fs::read_to_string(path) {
+                        let relative_path = path.strip_prefix(&cwd)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .to_string();
+                        
+                        self.rag_index.add_document(relative_path, content);
+                    }
+                }
+            }
+        }
+
+        let doc_count = self.rag_index.document_count();
+        tracing::info!("RAG indexing complete: {} documents indexed", doc_count);
+        self.set_status(Some(format!("Indexed {} files for context", doc_count)));
     }
 
     /// Add a message to the conversation

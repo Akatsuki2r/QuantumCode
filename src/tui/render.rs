@@ -34,14 +34,8 @@ pub fn create_layout(frame: &Frame) -> Rect {
 
 /// Main render function
 pub fn render(frame: &mut Frame, app: &App) {
-    // Create theme colors
-    let colors = match app.theme.colors.to_ratatui() {
-        Ok(c) => c,
-        Err(_) => {
-            let default_theme = Theme::default_theme();
-            default_theme.colors.to_ratatui().unwrap()
-        }
-    };
+    // In a production app, these should be cached in App state to avoid re-calculation every frame
+    let colors = app.theme.colors.to_ratatui().unwrap_or_else(|_| Theme::default_theme().colors.to_ratatui().unwrap());
 
     // Clear the entire area to prevent ghosting/artifacts from previous frames
     frame.render_widget(Clear, frame.area());
@@ -53,19 +47,19 @@ pub fn render(frame: &mut Frame, app: &App) {
     let suggestion_height = if has_suggestions { 2 } else { 0 };
 
     let chunks = Layout::vertical([
-        Constraint::Length(1),                 // Status bar
         Constraint::Min(1),                    // Chat Area
         Constraint::Length(3),                 // Input
         Constraint::Length(suggestion_height), // Suggestion bar (conditional)
+        Constraint::Length(1),                 // Status bar
     ])
     .split(frame.area());
 
-    render_status_bar(frame, chunks[0], app, &colors);
-    render_chat(frame, chunks[1], app, &colors);
-    render_input(frame, chunks[2], app, &colors);
+    render_chat(frame, chunks[0], app, &colors);
+    render_input(frame, chunks[1], app, &colors);
     if has_suggestions {
-        render_suggestions(frame, chunks[3], app, &colors);
+        render_suggestions(frame, chunks[2], app, &colors);
     }
+    render_status_bar(frame, chunks[3], app, &colors);
 
     // Conditionally render overlays
     if matches!(app.mode, Mode::Focus) {
@@ -76,12 +70,6 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     if app.command_palette_active {
         render_command_palette_overlay(frame, app, &colors);
-    }
-
-    if app.show_debug_panel {
-        let area = center_rect(90, 80, frame.area());
-        frame.render_widget(Clear, area);
-        render_debug_panel(frame, area, app, &colors);
     }
 
     // Render dropdown overlay when open (not collapsed)
@@ -109,18 +97,7 @@ fn render_status_bar(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Ensure we don't overflow the width to prevent hardware scrolling artifacts
-    let available_width = area.width;
-    
-    // Truncate model name if terminal is narrow
-    let model_display = if available_width < 60 && app.session.model.len() > 15 {
-        format!("{}…", &app.session.model[..12])
-    } else if available_width < 100 && app.session.model.len() > 25 {
-        format!("{}…", &app.session.model[..22])
-    } else {
-        app.session.model.clone()
-    };
-
+    // Compressed Status Bar: [Mode] (branch) [R] [Tier] [Tokens] [Model]
     let mut spans = vec![Span::styled(
         format!(
             " {} ",
@@ -133,29 +110,24 @@ fn render_status_bar(
         Style::default().fg(colors.background).bg(colors.accent),
     )];
 
-    if let Some(ref branch) = app.git_branch {
-        if available_width > 40 {
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                format!("({})", branch),
-                Style::default().fg(colors.secondary),
-            ));
-        }
+    // Add loading animation if AI is responding
+    if app.ai_response_rx.is_some() {
+        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let index = (now / 100) as usize % spinner.len();
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(spinner[index], Style::default().fg(colors.accent).bold()));
     }
 
-    // Show activity/status if debug mode is on
-    if app.debug_mode {
-        if let Some(ref status_msg) = app.status {
-            // Truncate status message to fit available width
-            let max_status_len = available_width.saturating_sub(spans.iter().map(|s| s.width() as u16).sum::<u16>() + 5) as usize; // +5 for brackets and spaces
-            let display_status = if status_msg.len() > max_status_len {
-                format!("{}…", &status_msg[..max_status_len.saturating_sub(1)])
-            } else {
-                status_msg.clone()
-            };
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(format!("[{}]", display_status), Style::default().fg(colors.info).bold()));
-        }
+    if let Some(ref branch) = app.git_branch {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("({})", branch),
+            Style::default().fg(colors.secondary),
+        ));
     }
 
     spans.push(Span::raw(" "));
@@ -180,7 +152,7 @@ fn render_status_bar(
             Style::default().fg(colors.muted),
         ),
         Span::styled(
-            format!(" {} ", model_display),
+            format!(" {} ", app.session.model),
             Style::default().fg(colors.muted).italic(),
         ),
     ]);
@@ -211,7 +183,6 @@ fn render_chat(
         w if w < 100 => 4,
         _ => 6,
     } as usize;
-    let padding = " ".repeat(padding_width);
 
     // Build list of messages
     let messages: Vec<Line> = app
@@ -219,34 +190,24 @@ fn render_chat(
         .messages
         .iter()
         .flat_map(|msg| {
-            let role_style = match msg.role.as_str() {
-                "user" => Style::default().fg(colors.accent),
-                "assistant" => Style::default().fg(colors.success),
-                _ => Style::default().fg(colors.muted),
-            };
-
-            let role_icon = match msg.role.as_str() {
-                "user" => "󰭹 ",
-                "assistant" => "󰚩 ",
-                _ => "󱐋 ",
+            let (role_icon, role_style) = match msg.role.as_str() {
+                "user" => ("󰭹 ", Style::default().fg(colors.accent)),
+                "assistant" => ("󰚩 ", Style::default().fg(colors.success)),
+                _ => ("󱐋 ", Style::default().fg(colors.muted)),
             };
 
             let mut lines = Vec::new();
             let mut in_code_block = false;
+            let wrap_width = inner_area.width.saturating_sub(padding_width as u16 + 4) as usize;
 
             for line in msg.content.lines() {
-                // Detect code block delimiters
                 if line.trim().starts_with("```") {
                     in_code_block = !in_code_block;
-                    let border = if in_code_block {
-                        format!("┌── Code {}", line.trim().trim_start_matches("```"))
-                    } else {
-                        "└───────".to_string()
-                    };
-                    lines.push(Line::from(Span::styled(
-                        format!("{}{}", padding, border),
-                        Style::default().fg(colors.muted).italic(),
-                    )));
+                    let border = if in_code_block { "┌── Code Block" } else { "└───────" };
+                    lines.push(Line::from(vec![
+                        Span::raw(" ".repeat(padding_width)),
+                        Span::styled(border, Style::default().fg(colors.muted).italic())
+                    ]));
                     continue;
                 }
 
@@ -257,24 +218,20 @@ fn render_chat(
                     Style::default().fg(colors.foreground)
                 };
 
-                // Add slight indentation for code or specific style
-                let display_line = if in_code_block {
-                    format!("│ {}", line)
-                } else {
-                    line.to_string()
-                };
-                let wrap_width = inner_area.width.saturating_sub(padding_width as u16) as usize;
-
-                for wrapped in textwrap::wrap(&display_line, wrap_width) {
-                    lines.push(Line::from(Span::styled(
-                        format!("{}{}", padding, wrapped),
-                        style,
-                    )));
+                let prefix = if in_code_block { "│ " } else { "" };
+                
+                // Optimization: textwrap::wrap is expensive, in a full implementation we would cache this
+                for wrapped in textwrap::wrap(line, wrap_width) {
+                    lines.push(Line::from(vec![
+                        Span::raw(" ".repeat(padding_width)),
+                        Span::raw(prefix),
+                        Span::styled(wrapped.into_owned(), style)
+                    ]));
                 }
             }
 
             let mut result = vec![Line::from(vec![
-                Span::raw(padding.clone()),
+                Span::raw(" ".repeat(padding_width)),
                 Span::styled(role_icon, role_style),
             ])];
             result.extend(lines);
@@ -311,17 +268,12 @@ fn render_input(
     app: &App,
     colors: &crate::config::themes::RatatuiColors,
 ) {
-    // Truncate title info to prevent decapitation if window is too small
-    let provider_info = format!("{}:{}", app.session.provider, app.session.model);
-    let max_title_len = area.width.saturating_sub(10) as usize;
-    let display_info = if provider_info.len() > max_title_len {
-        format!("{}…", &provider_info[..max_title_len.saturating_sub(1)])
-    } else {
-        provider_info
-    };
+    // This is the main chat input bar
+    // Show provider/model in the input title
+    let provider_text = format!("[{}:{}]", app.session.provider, app.session.model);
 
     let title_line = Line::from(vec![Span::styled(
-        format!(" [{}] ", display_info),
+        format!(" {} ", provider_text),
         Style::default().fg(colors.accent),
     )]);
 
@@ -375,11 +327,12 @@ fn render_suggestions(
             ("theme", "change TUI theme"),
             ("session", "manage sessions"),
             ("config", "app settings"),
-            ("debug", "toggle verbose status"),
             ("router", "model switching"),
             ("ollama", "list local models"),
             ("status", "app diagnostics"),
             ("version", "show version"),
+            ("search", "search the web"),
+            ("research", "deep web retrieval"),
             ("mode", "switch behavior"),
             ("commit", "git commit help"),
             ("review", "code review"),
@@ -467,6 +420,8 @@ fn render_help(
         Line::from("  /review     - Initiate a code review of specified files"),
         Line::from("  /test       - Run tests and analyze their output"),
         Line::from("  /status     - Display current application diagnostics"),
+        Line::from("  /search     - Search the web for information"),
+        Line::from("  /research   - Deep retrieval of web-based info"),
         Line::from("  /debug      - Toggle visibility of the debug log panel"),
         Line::from("  /quit       - Exit the application"),
         Line::default(),
@@ -517,37 +472,4 @@ fn render_command_palette_overlay(
         x: (area.x + 1 + cursor_pos).min(area.x + area.width.saturating_sub(2)),
         y: area.y + 1,
     });
-}
-
-/// Render the dedicated debug log panel
-fn render_debug_panel(
-    frame: &mut Frame,
-    area: Rect,
-    app: &App,
-    colors: &crate::config::themes::RatatuiColors,
-) {
-    let logs: Vec<ListItem> = app.ui_debug_logs
-        .iter()
-        .map(|log| {
-            ListItem::new(Line::from(vec![
-                Span::styled(" 󰚩 ", Style::default().fg(colors.accent)),
-                Span::raw(log),
-            ]))
-        })
-        .collect();
-
-    let list = List::new(logs)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(colors.accent))
-                .title(Span::styled(
-                    " Debug Logs (Internal Buffer) ",
-                    Style::default().fg(colors.accent).bold(),
-                ))
-                .title_bottom(Span::styled(" Press Ctrl+D or Esc to close ", Style::default().fg(colors.muted))),
-        )
-        .style(Style::default().bg(colors.background).fg(colors.foreground));
-
-    frame.render_widget(list, area);
 }
