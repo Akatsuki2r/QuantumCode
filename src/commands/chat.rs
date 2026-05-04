@@ -28,7 +28,7 @@ pub async fn run(prompt: Option<String>, model: Option<String>, mode: Mode) -> R
 pub fn get_provider(model_name: &str, settings: &Settings) -> Box<dyn Provider> {
     // Check if explicitly set to llama.cpp
     if settings.model.provider == "llama_cpp" {
-        let mut provider = LlamaCppProvider::from_config(&settings.llama_cpp);
+        let mut provider = LlamaCppProvider::new(settings.llama_cpp.clone());
         provider.set_model(model_name.to_string());
         return Box::new(provider);
     }
@@ -55,7 +55,7 @@ pub fn get_provider(model_name: &str, settings: &Settings) -> Box<dyn Provider> 
             Box::new(provider)
         }
         "llama_cpp" => {
-            let mut provider = LlamaCppProvider::from_config(&settings.llama_cpp);
+            let mut provider = LlamaCppProvider::new(settings.llama_cpp.clone());
             provider.set_model(model_name.to_string());
             Box::new(provider)
         }

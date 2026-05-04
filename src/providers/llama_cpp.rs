@@ -1,395 +1,174 @@
-//! llama.cpp server provider
-//!
-//! High-performance inference using llama.cpp HTTP server.
-//! Supports real SSE streaming and model switching via supervisor.
+//! llama.cpp (local LLM) provider
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
 use crate::config::settings::LlamaCppConfig;
-use crate::supervisor::ModelSupervisor;
+use crate::providers::ollama::OllamaProvider;
 
-/// llama.cpp server provider
+/// llama.cpp API client.
 ///
-/// Connects to a running llama.cpp HTTP server for inference.
-/// Uses ModelSupervisor to manage the server lifecycle.
+/// This provider connects to a running llama.cpp OpenAI-compatible server.
+/// Model paths are resolved from settings for validation/discovery, but requests
+/// are sent to the server using the configured model name.
 pub struct LlamaCppProvider {
-    /// Base URL for the llama.cpp server
     base_url: String,
-    /// Current model name
     model: String,
-    /// HTTP client
     client: reqwest::Client,
-    /// Model supervisor for process management
-    supervisor: Arc<Mutex<ModelSupervisor>>,
-    /// Whether to use the supervisor for auto-starting
-    auto_start: bool,
-    /// Prompt format type
-    prompt_format: PromptFormat,
-    /// Available models (name -> path mapping loaded from config)
-    models: Vec<String>,
+    config: LlamaCppConfig,
+    resolved_model_path: Option<PathBuf>,
 }
 
-/// Prompt format types for different model architectures
-#[derive(Debug, Clone, Copy)]
-pub enum PromptFormat {
-    /// LLaMA-style [INST] format
-    Llama,
-    /// ChatML format (Qwen, etc.)
-    ChatML,
-    /// Alpaca format
-    Alpaca,
-    /// Vicuna format
-    Vicuna,
-    /// Plain text (no special formatting)
-    Plain,
-}
-
-impl Default for PromptFormat {
-    fn default() -> Self {
-        PromptFormat::Llama
-    }
-}
-
-/// llama.cpp completion request
-#[derive(Debug, serde::Serialize)]
-struct CompletionRequest {
-    prompt: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    n_predict: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    top_p: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    top_k: Option<i32>,
+/// OpenAI-compatible request format used by llama.cpp server.
+#[derive(Debug, Serialize)]
+struct OpenAIRequest {
+    model: String,
+    messages: Vec<OpenAIMessage>,
+    stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_prompt: Option<bool>,
-    stream: bool,
 }
 
-/// llama.cpp completion response
-#[derive(Debug, serde::Deserialize)]
-struct CompletionResponse {
+/// OpenAI-compatible message format.
+#[derive(Debug, Serialize, Deserialize)]
+struct OpenAIMessage {
+    role: String,
     content: String,
-    #[serde(default)]
-    tokens_eval: i32,
-    #[serde(default)]
-    tokens_cached: i32,
-    #[serde(default)]
-    truncated: bool,
-    #[serde(default)]
-    stopped_eos: bool,
-    #[serde(default)]
-    stopped_word: bool,
-    #[serde(default)]
-    stopped_limit: bool,
-    #[serde(default)]
-    stopping_word: String,
-    #[serde(default)]
-    tokens_evaluated: i32,
-    #[serde(default)]
-    tokens_predicted: i32,
+}
+
+/// OpenAI-compatible response format.
+#[derive(Debug, Deserialize)]
+struct OpenAIResponse {
+    choices: Vec<OpenAIChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIChoice {
+    message: OpenAIMessage,
+}
+
+/// OpenAI-compatible stream response format.
+#[derive(Debug, Deserialize)]
+struct OpenAIStreamResponse {
+    choices: Vec<OpenAIStreamChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIStreamChoice {
+    delta: OpenAIStreamDelta,
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAIStreamDelta {
+    content: Option<String>,
 }
 
 impl LlamaCppProvider {
-    /// Create a new llama.cpp provider with supervisor
-    pub fn new(supervisor: Arc<Mutex<ModelSupervisor>>) -> Self {
-        Self {
-            base_url: "http://localhost:8080".to_string(),
-            model: "llama3.2".to_string(),
+    /// Create a new llama.cpp provider from settings.
+    pub fn new(config: LlamaCppConfig) -> Self {
+        let base_url = format!("http://localhost:{}", config.default_port);
+        let default_model = config
+            .model_paths
+            .keys()
+            .next()
+            .cloned()
+            .unwrap_or_else(|| "llama3.2".to_string());
+
+        let mut provider = Self {
+            base_url,
+            model: default_model,
             client: reqwest::Client::new(),
-            supervisor,
-            auto_start: true,
-            prompt_format: PromptFormat::Llama,
-            models: vec![
-                "llama3.2".to_string(),
-                "llama3.1".to_string(),
-                "llama3".to_string(),
-                "mistral".to_string(),
-                "qwen2.5".to_string(),
-                "deepseek-coder".to_string(),
-            ],
-        }
+            config,
+            resolved_model_path: None,
+        };
+        provider.resolved_model_path = provider.resolve_model_path(&provider.model);
+        provider
     }
 
-    /// Create a standalone provider without supervisor (connects to existing server)
-    pub fn standalone() -> Self {
-        let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
-        Self {
-            auto_start: false,
-            ..Self::new(supervisor)
-        }
-    }
-
-    /// Create with specific model
-    pub fn with_model(model: String) -> Self {
-        let mut provider = Self::standalone();
+    /// Create with a specific model.
+    pub fn with_model(model: String, config: LlamaCppConfig) -> Self {
+        let mut provider = Self::new(config);
         provider.model = model;
+        provider.resolved_model_path = provider.resolve_model_path(&provider.model);
         provider
     }
 
-    /// Create from user settings, including local inference optimizations.
+    /// Compatibility constructor for callers that want a borrowed settings config.
     pub fn from_config(config: &LlamaCppConfig) -> Self {
-        let supervisor = Arc::new(Mutex::new(ModelSupervisor::with_port(config.default_port)));
+        Self::new(config.clone())
+    }
 
-        {
-            let mut sup = supervisor
-                .try_lock()
-                .expect("new llama.cpp supervisor lock should be available");
-            for (name, path) in &config.model_paths {
-                sup.add_model_path(name.clone(), PathBuf::from(path));
-            }
-
-            if config.speculative_decoding {
-                sup.set_speculative_decoding(
-                    config.draft_model_path.as_ref().map(PathBuf::from),
-                    config.draft_max,
-                    config.draft_min,
-                    config.draft_p_min,
+    /// Resolve a model name to a GGUF file path when possible.
+    fn resolve_model_path(&self, model_name: &str) -> Option<PathBuf> {
+        if let Some(path_str) = self.config.model_paths.get(model_name) {
+            let path = PathBuf::from(path_str);
+            if path.exists() {
+                tracing::debug!(
+                    "LlamaCpp: Resolved model '{}' from config: {:?}",
+                    model_name,
+                    path
                 );
+                return Some(path);
             }
+
+            tracing::warn!(
+                "LlamaCpp: Configured model path for '{}' does not exist: {:?}",
+                model_name,
+                path
+            );
         }
 
-        let mut provider = Self::new(supervisor);
-        provider.base_url = format!("http://localhost:{}", config.default_port);
-        provider.auto_start = config.auto_start;
-
-        if !config.model_paths.is_empty() {
-            provider.models = config.model_paths.keys().cloned().collect();
-            provider.models.sort();
+        let path_as_name = PathBuf::from(model_name);
+        if path_as_name.exists() && path_as_name.extension().map_or(false, |ext| ext == "gguf") {
+            tracing::debug!(
+                "LlamaCpp: Model name '{}' is a direct GGUF path: {:?}",
+                model_name,
+                path_as_name
+            );
+            return Some(path_as_name);
         }
 
-        provider
+        tracing::warn!(
+            "LlamaCpp: Could not resolve model path for '{}'",
+            model_name
+        );
+        None
     }
 
-    /// Create with custom base URL
-    pub fn with_base_url(base_url: String) -> Self {
-        let mut provider = Self::standalone();
-        provider.base_url = base_url;
-        provider
-    }
-
-    /// Create with supervisor and model paths
-    pub fn with_model_paths(model_paths: HashMap<String, PathBuf>) -> Self {
-        let models: Vec<String> = model_paths.keys().cloned().collect();
-        let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
-
-        // Add model paths to supervisor
-        {
-            let mut sup = supervisor.blocking_lock();
-            for (name, path) in model_paths {
-                sup.add_model_path(name, path);
-            }
-        }
-
-        Self {
-            models,
-            supervisor,
-            ..Self::new(Arc::new(Mutex::new(ModelSupervisor::new())))
-        }
-    }
-
-    /// Set the base URL
-    pub fn set_base_url(&mut self, url: String) {
-        self.base_url = url;
-    }
-
-    /// Set auto-start behavior
-    pub fn set_auto_start(&mut self, auto_start: bool) {
-        self.auto_start = auto_start;
-    }
-
-    /// Set prompt format
-    pub fn set_prompt_format(&mut self, format: PromptFormat) {
-        self.prompt_format = format;
-    }
-
-    /// Add a model path mapping (for models from config)
-    pub fn add_model_path(&mut self, name: String, path: PathBuf) {
-        // Also add to supervisor's model paths if using supervisor
-        if let Ok(mut sup) = self.supervisor.try_lock() {
-            sup.add_model_path(name.clone(), path);
-        }
-        // Add to local models list if not already present
-        if !self.models.contains(&name) {
-            self.models.push(name);
-        }
-    }
-
-    /// Detect prompt format from model name
-    fn detect_format(&self, model: &str) -> PromptFormat {
-        let model_lower = model.to_lowercase();
-
-        if model_lower.contains("qwen") {
-            PromptFormat::ChatML
-        } else if model_lower.contains("vicuna") {
-            PromptFormat::Vicuna
-        } else if model_lower.contains("alpaca") {
-            PromptFormat::Alpaca
-        } else if model_lower.contains("llama") || model_lower.contains("mistral") {
-            PromptFormat::Llama
-        } else {
-            PromptFormat::Llama // Default to LLaMA format
-        }
-    }
-
-    /// Format messages into a prompt string
-    fn format_prompt(&self, messages: &[Message]) -> String {
-        let format = self.detect_format(&self.model);
-
-        match format {
-            PromptFormat::Llama => self.format_llama(messages),
-            PromptFormat::ChatML => self.format_chatml(messages),
-            PromptFormat::Alpaca => self.format_alpaca(messages),
-            PromptFormat::Vicuna => self.format_vicuna(messages),
-            PromptFormat::Plain => self.format_plain(messages),
-        }
-    }
-
-    /// LLaMA [INST] format
-    fn format_llama(&self, messages: &[Message]) -> String {
-        let mut prompt = String::new();
-
-        for message in messages {
-            match message.role {
-                Role::System => {
-                    prompt.push_str(&format!("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>", message.content));
-                }
-                Role::User => {
-                    prompt.push_str(&format!("<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", message.content));
-                }
-                Role::Assistant => {
-                    prompt.push_str(&format!("{}<|eot_id|>", message.content));
-                }
-            }
-        }
-
-        prompt
-    }
-
-    /// ChatML format (Qwen models)
-    fn format_chatml(&self, messages: &[Message]) -> String {
-        let mut prompt = String::new();
-
-        for message in messages {
-            match message.role {
-                Role::System => {
-                    prompt.push_str(&format!(
-                        "<|im_start|>system\n{}<|im_end|>\n",
-                        message.content
-                    ));
-                }
-                Role::User => {
-                    prompt.push_str(&format!(
-                        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
-                        message.content
-                    ));
-                }
-                Role::Assistant => {
-                    prompt.push_str(&format!("{}<|im_end|>\n", message.content));
-                }
-            }
-        }
-
-        prompt
-    }
-
-    /// Alpaca format
-    fn format_alpaca(&self, messages: &[Message]) -> String {
-        let mut prompt = String::new();
-
-        for message in messages {
-            match message.role {
-                Role::System => {
-                    prompt.push_str(&format!("### System:\n{}\n\n", message.content));
-                }
-                Role::User => {
-                    prompt.push_str(&format!(
-                        "### Instruction:\n{}\n\n### Response:\n",
-                        message.content
-                    ));
-                }
-                Role::Assistant => {
-                    prompt.push_str(&format!("{}\n\n", message.content));
-                }
-            }
-        }
-
-        prompt
-    }
-
-    /// Vicuna format
-    fn format_vicuna(&self, messages: &[Message]) -> String {
-        let mut prompt = String::new();
-
-        for message in messages {
-            match message.role {
-                Role::System => {
-                    prompt.push_str(&format!("SYSTEM: {}\n", message.content));
-                }
-                Role::User => {
-                    prompt.push_str(&format!("USER: {}\nASSISTANT: ", message.content));
-                }
-                Role::Assistant => {
-                    prompt.push_str(&format!("{}\n", message.content));
-                }
-            }
-        }
-
-        prompt
-    }
-
-    /// Plain text format
-    fn format_plain(&self, messages: &[Message]) -> String {
+    /// Convert internal messages to OpenAI format.
+    fn convert_messages(&self, messages: Vec<Message>) -> Vec<OpenAIMessage> {
         messages
-            .iter()
-            .map(|m| format!("{:?}: {}", m.role, m.content))
-            .collect::<Vec<_>>()
-            .join("\n\n")
+            .into_iter()
+            .map(|m| OpenAIMessage {
+                role: match m.role {
+                    Role::System => "system".to_string(),
+                    Role::User => "user".to_string(),
+                    Role::Assistant => "assistant".to_string(),
+                },
+                content: m.content,
+            })
+            .collect()
     }
 
-    /// Ensure the model is loaded and server is ready
-    async fn ensure_model(&self) -> Result<(), ProviderError> {
-        if !self.auto_start {
-            return Ok(());
-        }
-
-        let mut supervisor = self.supervisor.lock().await;
-
-        // Ensure model is loaded
-        supervisor
-            .ensure(&self.model)
-            .map_err(|e| ProviderError::ApiError(format!("Failed to start model: {}", e)))?;
-
-        Ok(())
-    }
-
-    /// Get the current base URL (from supervisor if auto-start is enabled)
-    fn get_base_url(&self) -> &str {
-        &self.base_url
-    }
-
-    /// Check if the server is running
+    /// Check if llama.cpp server is running.
     pub async fn is_running(&self) -> bool {
-        let url = format!("{}/health", self.get_base_url());
-
-        match self
-            .client
-            .get(&url)
-            .timeout(std::time::Duration::from_secs(5))
+        self.client
+            .get(format!("{}/health", self.base_url))
             .send()
             .await
-        {
-            Ok(resp) => resp.status().is_success(),
-            Err(_) => false,
-        }
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+    }
+}
+
+impl Default for LlamaCppProvider {
+    fn default() -> Self {
+        Self::new(LlamaCppConfig::default())
     }
 }
 
@@ -400,7 +179,16 @@ impl Provider for LlamaCppProvider {
     }
 
     fn models(&self) -> Vec<String> {
-        self.models.clone()
+        let mut models = self.config.model_paths.keys().cloned().collect::<Vec<_>>();
+
+        let (ollama_names, _, _) = OllamaProvider::detect_models_comprehensive();
+        for name in ollama_names {
+            if self.resolve_model_path(&name).is_some() && !models.contains(&name) {
+                models.push(name);
+            }
+        }
+        models.sort();
+        models
     }
 
     fn current_model(&self) -> &str {
@@ -409,54 +197,15 @@ impl Provider for LlamaCppProvider {
 
     fn set_model(&mut self, model: String) {
         self.model = model;
+        self.resolved_model_path = self.resolve_model_path(&self.model);
     }
 
     fn is_configured(&self) -> bool {
-        // llama.cpp doesn't need API key, just needs the server running
-        // or the supervisor configured with model paths
-        true
+        self.resolved_model_path.is_some()
     }
 
     async fn send(&self, messages: Vec<Message>) -> Result<String, ProviderError> {
-        // Ensure model is loaded
-        self.ensure_model().await?;
-
-        let prompt = self.format_prompt(&messages);
-        let base_url = self.get_base_url();
-
-        let request = CompletionRequest {
-            prompt,
-            n_predict: Some(2048),
-            temperature: Some(0.7),
-            top_p: Some(0.9),
-            top_k: Some(40),
-            cache_prompt: Some(true),
-            stream: false,
-        };
-
-        let url = format!("{}/completion", base_url);
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::ApiError(error_text));
-        }
-
-        let result: CompletionResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::ApiError(e.to_string()))?;
-
-        Ok(result.content)
+        self.send_with_system(messages, None).await
     }
 
     async fn send_with_system(
@@ -464,41 +213,33 @@ impl Provider for LlamaCppProvider {
         messages: Vec<Message>,
         system: Option<&str>,
     ) -> Result<String, ProviderError> {
-        // Ensure model is loaded
-        self.ensure_model().await?;
+        let _ = self.resolved_model_path.as_ref().ok_or_else(|| {
+            ProviderError::ConfigError(format!(
+                "Model path for '{}' not resolved. Cannot send to llama.cpp server.",
+                self.model
+            ))
+        })?;
 
-        // Prepend system message if provided
         let mut all_messages = Vec::new();
         if let Some(sys) = system {
-            all_messages.push(Message {
-                role: Role::System,
+            all_messages.push(OpenAIMessage {
+                role: "system".to_string(),
                 content: sys.to_string(),
-                name: None,
             });
         }
-        all_messages.extend(messages);
+        all_messages.extend(self.convert_messages(messages));
 
-        let prompt = self.format_prompt(&all_messages);
-        let base_url = self.get_base_url();
-
-        let request = CompletionRequest {
-            prompt,
-            n_predict: Some(2048),
-            temperature: Some(0.7),
-            top_p: Some(0.9),
-            top_k: Some(40),
-            cache_prompt: Some(true),
+        let request = OpenAIRequest {
+            model: self.model.clone(),
+            messages: all_messages,
             stream: false,
+            cache_prompt: Some(true),
         };
-
-        let url = format!("{}/completion", base_url);
 
         let response = self
             .client
-            .post(&url)
-            .header("Content-Type", "application/json")
+            .post(format!("{}/v1/chat/completions", self.base_url))
             .json(&request)
-            .timeout(std::time::Duration::from_secs(120))
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -508,137 +249,95 @@ impl Provider for LlamaCppProvider {
             return Err(ProviderError::ApiError(error_text));
         }
 
-        let result: CompletionResponse = response
+        let result: OpenAIResponse = response
             .json()
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        Ok(result.content)
+        Ok(result
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default())
     }
 
     async fn send_stream(
         &self,
         messages: Vec<Message>,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
-        // Ensure model is loaded
-        if let Err(e) = self.ensure_model().await {
+        if let Err(e) = self.resolved_model_path.as_ref().ok_or_else(|| {
+            ProviderError::ConfigError(format!(
+                "Model path for '{}' not resolved. Cannot stream from llama.cpp server.",
+                self.model
+            ))
+        }) {
             return Box::pin(futures::stream::once(async move { Err(e) }));
         }
 
-        let prompt = self.format_prompt(&messages);
-        let base_url = self.get_base_url().to_string();
-        let client = self.client.clone();
-
-        // Create streaming request
-        let request = CompletionRequest {
-            prompt,
-            n_predict: Some(2048),
-            temperature: Some(0.7),
-            top_p: Some(0.9),
-            top_k: Some(40),
-            cache_prompt: Some(true),
+        let request = OpenAIRequest {
+            model: self.model.clone(),
+            messages: self.convert_messages(messages),
             stream: true,
+            cache_prompt: Some(true),
         };
 
-        let url = format!("{}/completion", base_url);
+        let client = self.client.clone();
+        let url = format!("{}/v1/chat/completions", self.base_url);
 
-        // Make the streaming request
-        let response = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await;
+        let stream = async_stream::try_stream! {
+            let response = client
+                .post(url)
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-        match response {
-            Ok(resp) => {
-                if !resp.status().is_success() {
-                    let error_text = resp.text().await.unwrap_or_default();
-                    Box::pin(futures::stream::once(async move {
-                        Err(ProviderError::ApiError(error_text))
-                    }))
-                } else {
-                    // Parse SSE stream
-                    Box::pin(parse_sse_stream(resp))
-                }
-            }
-            Err(e) => Box::pin(futures::stream::once(async move {
-                Err(ProviderError::NetworkError(e.to_string()))
-            })),
-        }
-    }
+            if response.status().is_success() {
+                let mut bytes_stream = response.bytes_stream();
+                while let Some(chunk_result) = bytes_stream.next().await {
+                    let bytes = chunk_result.map_err(|e| ProviderError::ApiError(e.to_string()))?;
+                    let text = String::from_utf8_lossy(&bytes);
 
-    fn count_tokens(&self, text: &str) -> usize {
-        // Rough approximation for llama models
-        // Typically ~4 characters per token
-        text.len() / 4
-    }
-
-    fn cost_per_million(&self) -> (f64, f64) {
-        // llama.cpp is free (local inference)
-        (0.0, 0.0)
-    }
-}
-
-/// Parse SSE stream from llama.cpp server
-fn parse_sse_stream(
-    response: reqwest::Response,
-) -> impl Stream<Item = Result<StreamChunk, ProviderError>> + Send {
-    use futures::StreamExt;
-
-    let mut buffer = String::new();
-
-    async_stream::try_stream! {
-        let mut stream = response.bytes_stream();
-
-        while let Some(bytes_result) = stream.next().await {
-            let bytes = bytes_result.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let chunk = String::from_utf8_lossy(&bytes);
-            buffer.push_str(&chunk);
-
-            // Process complete lines
-            while let Some(pos) = buffer.find('\n') {
-                let line = buffer[..pos].to_string();
-                buffer = buffer[pos + 1..].to_string();
-
-                // Skip empty lines
-                if line.trim().is_empty() {
-                    continue;
-                }
-
-                // Parse SSE data lines
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" {
-                        yield StreamChunk {
-                            content: String::new(),
-                            done: true,
-                            tokens: None,
-                        };
-                        return;
-                    }
-
-                    // Parse JSON content
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                        if let Some(content) = json.get("content").and_then(|c| c.as_str()) {
-                            let is_done = json.get("stop")
-                                .and_then(|s| s.as_bool())
-                                .unwrap_or(false);
-
-                            yield StreamChunk {
-                                content: content.to_string(),
-                                done: is_done,
-                                tokens: None,
-                            };
-
-                            if is_done {
+                    for line in text.lines() {
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data == "[DONE]" {
+                                yield StreamChunk {
+                                    content: String::new(),
+                                    done: true,
+                                    tokens: None,
+                                };
                                 return;
+                            }
+
+                            if let Ok(chunk) = serde_json::from_str::<OpenAIStreamResponse>(data) {
+                                if let Some(choice) = chunk.choices.first() {
+                                    if let Some(content) = &choice.delta.content {
+                                        yield StreamChunk {
+                                            content: content.clone(),
+                                            done: choice.finish_reason.is_some(),
+                                            tokens: None,
+                                        };
+                                    }
+                                }
                             }
                         }
                     }
                 }
+            } else {
+                let error_text = response.text().await.unwrap_or_default();
+                Err(ProviderError::ApiError(error_text))?;
             }
-        }
+        };
+
+        Box::pin(stream)
+    }
+
+    fn count_tokens(&self, text: &str) -> usize {
+        text.len() / 4
+    }
+
+    fn cost_per_million(&self) -> (f64, f64) {
+        (0.0, 0.0)
     }
 }
 
@@ -647,62 +346,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_format_llama() {
-        let provider = LlamaCppProvider::standalone();
-        let messages = vec![
-            Message {
-                role: Role::System,
-                content: "You are helpful.".to_string(),
-                name: None,
-            },
-            Message {
-                role: Role::User,
-                content: "Hello".to_string(),
-                name: None,
-            },
-        ];
-
-        let prompt = provider.format_prompt(&messages);
-        assert!(prompt.contains("system"));
-        assert!(prompt.contains("user"));
-        assert!(prompt.contains("Hello"));
+    fn test_default_provider_has_fallback_model() {
+        let provider = LlamaCppProvider::default();
+        assert_eq!(provider.current_model(), "llama3.2");
     }
 
     #[test]
-    fn test_format_chatml() {
-        let mut provider = LlamaCppProvider::standalone();
-        provider.model = "qwen2.5".to_string();
+    fn test_config_models_are_listed() {
+        let mut config = LlamaCppConfig::default();
+        config
+            .model_paths
+            .insert("test-model".to_string(), "/tmp/test-model.gguf".to_string());
 
-        let messages = vec![Message {
-            role: Role::User,
-            content: "Hello".to_string(),
-            name: None,
-        }];
-
-        let prompt = provider.format_prompt(&messages);
-        assert!(prompt.contains("<|im_start|>user"));
-        assert!(prompt.contains("<|im_end|>"));
-    }
-
-    #[test]
-    fn test_detect_format() {
-        let provider = LlamaCppProvider::standalone();
-
-        assert!(matches!(
-            provider.detect_format("llama3.2"),
-            PromptFormat::Llama
-        ));
-        assert!(matches!(
-            provider.detect_format("qwen2.5"),
-            PromptFormat::ChatML
-        ));
-        assert!(matches!(
-            provider.detect_format("vicuna"),
-            PromptFormat::Vicuna
-        ));
-        assert!(matches!(
-            provider.detect_format("alpaca"),
-            PromptFormat::Alpaca
-        ));
+        let provider = LlamaCppProvider::new(config);
+        assert!(provider.models().contains(&"test-model".to_string()));
     }
 }
