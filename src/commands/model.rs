@@ -292,6 +292,19 @@ fn show_current_provider() -> Result<()> {
             settings.llama_cpp.fallback_to_ollama
         );
         println!("  Auto-start: {}", settings.llama_cpp.auto_start);
+        println!(
+            "  Speculative decoding: {}",
+            settings.llama_cpp.speculative_decoding
+        );
+        if let Some(path) = &settings.llama_cpp.draft_model_path {
+            println!("  Draft model: {}", path);
+            println!(
+                "  Draft params: max={} min={} p_min={}",
+                settings.llama_cpp.draft_max,
+                settings.llama_cpp.draft_min,
+                settings.llama_cpp.draft_p_min
+            );
+        }
         if !settings.llama_cpp.model_paths.is_empty() {
             println!("  Model paths:");
             for (name, path) in &settings.llama_cpp.model_paths {

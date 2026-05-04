@@ -186,39 +186,23 @@ impl ToolRegistry {
         };
 
         // Register default tools
-        registry.register_tool("Read", "Read file contents. Arg: file path", |call| {
-            tool_read(&call.arg)
+        registry.register_tool("Read", "path -> file contents", |call| tool_read(&call.arg));
+        registry.register_tool("Write", "path + content -> create/overwrite file", |call| {
+            tool_write(&call.arg, call.content.as_deref().unwrap_or(""))
         });
-        registry.register_tool(
-            "Write",
-            "Write content to file. Arg: file path, Content: content to write",
-            |call| tool_write(&call.arg, call.content.as_deref().unwrap_or("")),
-        );
-        registry.register_tool(
-            "Bash",
-            "Execute shell command. Arg: command string",
-            |call| tool_bash(&call.arg),
-        );
-        registry.register_tool(
-            "Grep",
-            "Search file contents. Arg: pattern, Path: directory to search",
-            |call| tool_grep(&call.arg, ""),
-        );
-        registry.register_tool(
-            "Glob",
-            "Find files by pattern. Arg: glob pattern (e.g., *.rs)",
-            |call| tool_glob(&call.arg),
-        );
-        registry.register_tool(
-            "Search",
-            "Search the web for information. Arg: query string",
-            |call| tool_search(&call.arg),
-        );
-        registry.register_tool(
-            "Research",
-            "Deep web retrieval and analysis. Arg: research topic",
-            |call| tool_search(&call.arg),
-        );
+        registry.register_tool("Bash", "cmd -> stdout/stderr", |call| tool_bash(&call.arg));
+        registry.register_tool("Grep", "pattern -> recursive content matches", |call| {
+            tool_grep(&call.arg, "")
+        });
+        registry.register_tool("Glob", "pattern -> matching file paths", |call| {
+            tool_glob(&call.arg)
+        });
+        registry.register_tool("Search", "query -> web summary", |call| {
+            tool_search(&call.arg)
+        });
+        registry.register_tool("Research", "topic -> deeper web synthesis", |call| {
+            tool_search(&call.arg)
+        });
 
         registry
     }
@@ -248,60 +232,68 @@ impl ToolRegistry {
 
     /// List all available tools for the system prompt
     pub fn list_tools(&self) -> String {
+        self.list_tools_for(None)
+    }
+
+    /// List only tools allowed by the router policy.
+    pub fn list_tools_for(&self, allowed_tools: Option<&[String]>) -> String {
         let mut list = String::new();
         let mut sorted_tools: Vec<_> = self.tools.values().collect();
         sorted_tools.sort_by(|a, b| a.0.name.cmp(&b.0.name));
 
         for (tool, _) in sorted_tools {
-            list.push_str(&format!("- {}: {}\n", tool.name, tool.description));
+            if let Some(allowed) = allowed_tools {
+                if !allowed
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(&tool.name))
+                {
+                    continue;
+                }
+            }
+            list.push_str(&format!("{}({})\n", tool.name, tool.description));
         }
         list
     }
 
     /// Provide the tool call format for the system prompt
     pub fn tool_call_format(&self) -> String {
-        r#"
-TOOL CALL FORMAT:
-Call tools using XML-style tags in your response:
+        self.tool_call_format_for(None)
+    }
 
-<tool>
-<name>tool_name</name>
-<arg>value</arg>
-</tool>
+    /// Provide compact examples only for tools available in the current mode.
+    pub fn tool_call_format_for(&self, allowed_tools: Option<&[String]>) -> String {
+        let is_allowed = |tool_name: &str| {
+            allowed_tools.map_or(true, |allowed| {
+                allowed
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(tool_name))
+            })
+        };
 
-Example - Read a file:
-<tool>
-<name>Read</name>
-<arg>src/main.rs</arg>
-</tool>
-
-Example - Write a file:
-<tool>
-<name>Write</name>
-<arg>test.txt</arg>
-<content>Hello world</content>
-</tool>
-
-Example - Run bash:
-<tool>
-<name>Bash</name>
-<arg>ls -la</arg>
-</tool>
-
-Example - Grep:
-<tool>
-<name>Grep</name>
-<arg>fn main</arg>
-<path>src/</path>
-</tool>
-
-Example - Glob:
-<tool>
-<name>Glob</name>
-<arg>*.rs</arg>
-</tool>
-"#
-        .to_string()
+        let mut lines = vec!["Call XML only when a tool is needed:".to_string()];
+        if is_allowed("Read") {
+            lines.push("<tool><name>Read</name><arg>src/main.rs</arg></tool>".to_string());
+        }
+        if is_allowed("Write") {
+            lines.push(
+                "<tool><name>Write</name><arg>path</arg><content>full content</content></tool>"
+                    .to_string(),
+            );
+        }
+        if is_allowed("Bash") {
+            lines.push("<tool><name>Bash</name><arg>cargo test</arg></tool>".to_string());
+        }
+        if is_allowed("Grep") {
+            lines.push("<tool><name>Grep</name><arg>fn main</arg></tool>".to_string());
+        }
+        if is_allowed("Glob") {
+            lines.push("<tool><name>Glob</name><arg>*.rs</arg></tool>".to_string());
+        }
+        if lines.len() == 1 {
+            lines.push("<tool><name>ToolName</name><arg>value</arg></tool>".to_string());
+        }
+        lines.push("Use exact tool names. Omit tools when ready to answer.".to_string());
+        lines.join("\n")
     }
 }
 

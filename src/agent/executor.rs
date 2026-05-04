@@ -4,7 +4,7 @@ use color_eyre::eyre::Result;
 use futures::StreamExt;
 
 use super::tools::{ToolCall, ToolRegistry, ToolResult};
-use super::{parse_tool_calls, AGENT_SYSTEM_PROMPT};
+use super::{build_agent_system_prompt, build_agent_system_prompt_for_tools, parse_tool_calls};
 use crate::providers::{Message, Provider, ProviderError, Role, StreamChunk};
 use crate::router::{route, RouterConfig, RoutingDecision};
 use thiserror::Error;
@@ -34,10 +34,11 @@ pub struct AgentExecutor {
 impl AgentExecutor {
     /// Create new executor with initial user message
     pub fn new(user_message: &str, cwd: &str) -> Self {
-        let mut messages = vec![
+        let tool_registry = ToolRegistry::new();
+        let messages = vec![
             Message {
                 role: Role::System,
-                content: AGENT_SYSTEM_PROMPT.to_string(),
+                content: build_agent_system_prompt(&tool_registry),
                 name: None,
             },
             Message {
@@ -52,7 +53,7 @@ impl AgentExecutor {
             iteration: 0,
             routing: None,
             cwd: cwd.to_string(),
-            tool_registry: ToolRegistry::new(),
+            tool_registry,
         }
     }
 
@@ -81,6 +82,12 @@ impl AgentExecutor {
                 routing.model_tier.as_str(),
                 routing.confidence
             );
+
+            let allowed_tools = routing.tools.allowed_tools.clone();
+            if let Some(system_message) = self.messages.first_mut() {
+                system_message.content =
+                    build_agent_system_prompt_for_tools(&self.tool_registry, Some(&allowed_tools));
+            }
         }
 
         loop {

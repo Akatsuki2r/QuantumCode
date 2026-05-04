@@ -20,15 +20,55 @@ pub enum ProviderType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlamaCppConfig {
     /// Enable llama.cpp provider
+    #[serde(default = "default_true")]
     pub enabled: bool,
     /// Default port for llama.cpp server
+    #[serde(default = "default_llama_cpp_port")]
     pub default_port: u16,
     /// Model name to GGUF file path mapping
+    #[serde(default)]
     pub model_paths: HashMap<String, String>,
     /// Fallback to Ollama if llama.cpp fails
+    #[serde(default = "default_true")]
     pub fallback_to_ollama: bool,
     /// Auto-start llama.cpp server when needed
+    #[serde(default)]
     pub auto_start: bool,
+    /// Enable speculative decoding when Quantumn auto-starts llama-server
+    #[serde(default)]
+    pub speculative_decoding: bool,
+    /// Draft GGUF model path used by llama.cpp speculative decoding
+    #[serde(default)]
+    pub draft_model_path: Option<String>,
+    /// Maximum draft tokens proposed per verification step
+    #[serde(default = "default_draft_max")]
+    pub draft_max: u16,
+    /// Minimum draft tokens before accepting speculative batches
+    #[serde(default = "default_draft_min")]
+    pub draft_min: u16,
+    /// Minimum probability threshold for draft tokens
+    #[serde(default = "default_draft_p_min")]
+    pub draft_p_min: f32,
+}
+
+fn default_draft_max() -> u16 {
+    16
+}
+
+fn default_llama_cpp_port() -> u16 {
+    8080
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_draft_min() -> u16 {
+    5
+}
+
+fn default_draft_p_min() -> f32 {
+    0.9
 }
 
 impl Default for LlamaCppConfig {
@@ -39,6 +79,11 @@ impl Default for LlamaCppConfig {
             model_paths: HashMap::new(),
             fallback_to_ollama: true,
             auto_start: false, // Disabled by default since it requires llama-server binary
+            speculative_decoding: false,
+            draft_model_path: None,
+            draft_max: default_draft_max(),
+            draft_min: default_draft_min(),
+            draft_p_min: default_draft_p_min(),
         }
     }
 }
@@ -265,6 +310,13 @@ impl Settings {
             "llama_cpp.default_port" => Some(self.llama_cpp.default_port.to_string()),
             "llama_cpp.fallback_to_ollama" => Some(self.llama_cpp.fallback_to_ollama.to_string()),
             "llama_cpp.auto_start" => Some(self.llama_cpp.auto_start.to_string()),
+            "llama_cpp.speculative_decoding" => {
+                Some(self.llama_cpp.speculative_decoding.to_string())
+            }
+            "llama_cpp.draft_model_path" => self.llama_cpp.draft_model_path.clone(),
+            "llama_cpp.draft_max" => Some(self.llama_cpp.draft_max.to_string()),
+            "llama_cpp.draft_min" => Some(self.llama_cpp.draft_min.to_string()),
+            "llama_cpp.draft_p_min" => Some(self.llama_cpp.draft_p_min.to_string()),
             "lm_studio.enabled" => Some(self.lm_studio.enabled.to_string()),
             "lm_studio.base_url" => Some(self.lm_studio.base_url.clone()),
             _ => None,
@@ -321,6 +373,26 @@ impl Settings {
             }
             "llama_cpp.auto_start" => {
                 self.llama_cpp.auto_start = value.parse().wrap_err("Invalid boolean value")?
+            }
+            "llama_cpp.speculative_decoding" => {
+                self.llama_cpp.speculative_decoding =
+                    value.parse().wrap_err("Invalid boolean value")?
+            }
+            "llama_cpp.draft_model_path" => {
+                self.llama_cpp.draft_model_path = if value.trim().is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            }
+            "llama_cpp.draft_max" => {
+                self.llama_cpp.draft_max = value.parse().wrap_err("Invalid number")?
+            }
+            "llama_cpp.draft_min" => {
+                self.llama_cpp.draft_min = value.parse().wrap_err("Invalid number")?
+            }
+            "llama_cpp.draft_p_min" => {
+                self.llama_cpp.draft_p_min = value.parse().wrap_err("Invalid number")?
             }
             "lm_studio.enabled" => {
                 self.lm_studio.enabled = value.parse().wrap_err("Invalid boolean value")?

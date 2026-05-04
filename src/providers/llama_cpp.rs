@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk};
+use crate::config::settings::LlamaCppConfig;
 use crate::supervisor::ModelSupervisor;
 
 /// llama.cpp server provider
@@ -68,6 +69,8 @@ struct CompletionRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_k: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_prompt: Option<bool>,
     stream: bool,
 }
 
@@ -129,6 +132,40 @@ impl LlamaCppProvider {
     pub fn with_model(model: String) -> Self {
         let mut provider = Self::standalone();
         provider.model = model;
+        provider
+    }
+
+    /// Create from user settings, including local inference optimizations.
+    pub fn from_config(config: &LlamaCppConfig) -> Self {
+        let supervisor = Arc::new(Mutex::new(ModelSupervisor::with_port(config.default_port)));
+
+        {
+            let mut sup = supervisor
+                .try_lock()
+                .expect("new llama.cpp supervisor lock should be available");
+            for (name, path) in &config.model_paths {
+                sup.add_model_path(name.clone(), PathBuf::from(path));
+            }
+
+            if config.speculative_decoding {
+                sup.set_speculative_decoding(
+                    config.draft_model_path.as_ref().map(PathBuf::from),
+                    config.draft_max,
+                    config.draft_min,
+                    config.draft_p_min,
+                );
+            }
+        }
+
+        let mut provider = Self::new(supervisor);
+        provider.base_url = format!("http://localhost:{}", config.default_port);
+        provider.auto_start = config.auto_start;
+
+        if !config.model_paths.is_empty() {
+            provider.models = config.model_paths.keys().cloned().collect();
+            provider.models.sort();
+        }
+
         provider
     }
 
@@ -393,6 +430,7 @@ impl Provider for LlamaCppProvider {
             temperature: Some(0.7),
             top_p: Some(0.9),
             top_k: Some(40),
+            cache_prompt: Some(true),
             stream: false,
         };
 
@@ -449,6 +487,7 @@ impl Provider for LlamaCppProvider {
             temperature: Some(0.7),
             top_p: Some(0.9),
             top_k: Some(40),
+            cache_prompt: Some(true),
             stream: false,
         };
 
@@ -497,6 +536,7 @@ impl Provider for LlamaCppProvider {
             temperature: Some(0.7),
             top_p: Some(0.9),
             top_k: Some(40),
+            cache_prompt: Some(true),
             stream: true,
         };
 

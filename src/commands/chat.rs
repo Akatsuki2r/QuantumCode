@@ -8,11 +8,7 @@ use crate::providers::lm_studio::LmStudioProvider;
 use crate::providers::ollama::OllamaProvider;
 use crate::providers::openai::OpenAIProvider;
 use crate::providers::{Message, Provider, Role};
-use crate::supervisor::ModelSupervisor;
 use color_eyre::eyre::Result;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Run chat mode (one-shot or interactive)
 pub async fn run(prompt: Option<String>, model: Option<String>, mode: Mode) -> Result<()> {
@@ -32,13 +28,8 @@ pub async fn run(prompt: Option<String>, model: Option<String>, mode: Mode) -> R
 pub fn get_provider(model_name: &str, settings: &Settings) -> Box<dyn Provider> {
     // Check if explicitly set to llama.cpp
     if settings.model.provider == "llama_cpp" {
-        let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
-        let mut provider = LlamaCppProvider::new(supervisor.clone());
+        let mut provider = LlamaCppProvider::from_config(&settings.llama_cpp);
         provider.set_model(model_name.to_string());
-        // Load model paths from settings
-        for (name, path) in &settings.llama_cpp.model_paths {
-            provider.add_model_path(name.clone(), PathBuf::from(path));
-        }
         return Box::new(provider);
     }
 
@@ -64,13 +55,8 @@ pub fn get_provider(model_name: &str, settings: &Settings) -> Box<dyn Provider> 
             Box::new(provider)
         }
         "llama_cpp" => {
-            let supervisor = Arc::new(Mutex::new(ModelSupervisor::new()));
-            let mut provider = LlamaCppProvider::new(supervisor);
+            let mut provider = LlamaCppProvider::from_config(&settings.llama_cpp);
             provider.set_model(model_name.to_string());
-            // Load model paths from settings
-            for (name, path) in &settings.llama_cpp.model_paths {
-                provider.add_model_path(name.clone(), PathBuf::from(path));
-            }
             Box::new(provider)
         }
         "lm_studio" => {
