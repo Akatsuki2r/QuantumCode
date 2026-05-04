@@ -294,7 +294,7 @@ impl OllamaProvider {
         let content = std::fs::read_to_string(manifest_path).ok()?;
         let json: serde_json::Value = serde_json::from_str(&content).ok()?;
 
-        // The 'layers' array contains the model weights. 
+        // The 'layers' array contains the model weights.
         // We look for the one with the image.model media type.
         if let Some(layers) = json.get("layers").and_then(|l| l.as_array()) {
             for layer in layers {

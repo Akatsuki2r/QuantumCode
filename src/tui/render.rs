@@ -35,7 +35,11 @@ pub fn create_layout(frame: &Frame) -> Rect {
 /// Main render function
 pub fn render(frame: &mut Frame, app: &App) {
     // In a production app, these should be cached in App state to avoid re-calculation every frame
-    let colors = app.theme.colors.to_ratatui().unwrap_or_else(|_| Theme::default_theme().colors.to_ratatui().unwrap());
+    let colors = app
+        .theme
+        .colors
+        .to_ratatui()
+        .unwrap_or_else(|_| Theme::default_theme().colors.to_ratatui().unwrap());
 
     // Clear the entire area to prevent ghosting/artifacts from previous frames
     frame.render_widget(Clear, frame.area());
@@ -101,7 +105,12 @@ pub fn render(frame: &mut Frame, app: &App) {
 }
 
 /// Render the Thought Process / Debug panel
-fn render_debug_panel(frame: &mut Frame, area: Rect, app: &App, colors: &crate::config::themes::RatatuiColors) {
+fn render_debug_panel(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    colors: &crate::config::themes::RatatuiColors,
+) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(colors.accent))
@@ -109,10 +118,10 @@ fn render_debug_panel(frame: &mut Frame, area: Rect, app: &App, colors: &crate::
 
     let inner_area = block.inner(area);
 
-    let logs: Vec<Line> = app.ui_debug_logs.iter()
-        .map(|log| {
-            Line::from(Span::styled(log, Style::default().fg(colors.foreground)))
-        })
+    let logs: Vec<Line> = app
+        .ui_debug_logs
+        .iter()
+        .map(|log| Line::from(Span::styled(log, Style::default().fg(colors.foreground))))
         .collect();
 
     let total_lines = logs.len();
@@ -125,9 +134,7 @@ fn render_debug_panel(frame: &mut Frame, area: Rect, app: &App, colors: &crate::
         app.debug_scroll_offset.min(max_scroll)
     } as u16;
 
-    let paragraph = Paragraph::new(logs)
-        .block(block)
-        .scroll((scroll_offset, 0));
+    let paragraph = Paragraph::new(logs).block(block).scroll((scroll_offset, 0));
 
     frame.render_widget(paragraph, area);
 }
@@ -168,7 +175,10 @@ fn render_status_bar(
             .as_millis();
         let index = (now / 100) as usize % spinner.len();
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(spinner[index], Style::default().fg(colors.accent).bold()));
+        spans.push(Span::styled(
+            spinner[index],
+            Style::default().fg(colors.accent).bold(),
+        ));
     }
 
     if let Some(ref branch) = app.git_branch {
@@ -252,10 +262,14 @@ fn render_chat(
             for line in msg.content.lines() {
                 if line.trim().starts_with("```") {
                     in_code_block = !in_code_block;
-                    let border = if in_code_block { "┌── Code Block" } else { "└───────" };
+                    let border = if in_code_block {
+                        "┌── Code Block"
+                    } else {
+                        "└───────"
+                    };
                     lines.push(Line::from(vec![
                         Span::raw(" ".repeat(padding_width)),
-                        Span::styled(border, Style::default().fg(colors.muted).italic())
+                        Span::styled(border, Style::default().fg(colors.muted).italic()),
                     ]));
                     continue;
                 }
@@ -268,13 +282,13 @@ fn render_chat(
                 };
 
                 let prefix = if in_code_block { "│ " } else { "" };
-                
+
                 // Optimization: textwrap::wrap is expensive, in a full implementation we would cache this
                 for wrapped in textwrap::wrap(line, wrap_width) {
                     lines.push(Line::from(vec![
                         Span::raw(" ".repeat(padding_width)),
                         Span::raw(prefix),
-                        Span::styled(wrapped.into_owned(), style)
+                        Span::styled(wrapped.into_owned(), style),
                     ]));
                 }
             }

@@ -96,8 +96,8 @@ impl DropdownSelector {
             let env_var = match provider.name.as_str() {
                 "anthropic" => std::env::var("ANTHROPIC_API_KEY").is_ok(),
                 "openai" => std::env::var("OPENAI_API_KEY").is_ok(),
-            "groq" => std::env::var("GROQ_API_KEY").is_ok(),
-            "gemini" => std::env::var("GEMINI_API_KEY").is_ok(),
+                "groq" => std::env::var("GROQ_API_KEY").is_ok(),
+                "gemini" => std::env::var("GEMINI_API_KEY").is_ok(),
                 _ => true,
             };
             return env_var;
@@ -206,7 +206,10 @@ impl DropdownSelector {
                 "llama_cpp",
                 "llama.cpp (Local)",
                 false,
-                llama_cpp_models.first().map(|s| s.as_str()).unwrap_or("llama3.2"),
+                llama_cpp_models
+                    .first()
+                    .map(|s| s.as_str())
+                    .unwrap_or("llama3.2"),
                 llama_cpp_models.clone(),
                 true,
             ),

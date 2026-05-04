@@ -62,8 +62,11 @@ impl GeminiProvider {
     /// Create a new Gemini provider
     pub fn new() -> Self {
         let api_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
-        let base_url = std::env::var("GEMINI_BASE_URL").unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".to_string());
-        let model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
+        let base_url = std::env::var("GEMINI_BASE_URL").unwrap_or_else(|_| {
+            "https://generativelanguage.googleapis.com/v1beta/openai".to_string()
+        });
+        let model =
+            std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-1.5-flash".to_string());
         Self {
             base_url,
             model,
@@ -170,7 +173,11 @@ impl Provider for GeminiProvider {
             .await
             .map_err(|e| ProviderError::ApiError(e.to_string()))?;
 
-        Ok(result.choices.first().map(|c| c.message.content.clone()).unwrap_or_default())
+        Ok(result
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default())
     }
 
     async fn send_stream(
@@ -199,12 +206,12 @@ impl Provider for GeminiProvider {
             while let Some(chunk_result) = bytes_stream.next().await {
                 let bytes = chunk_result.map_err(|e| ProviderError::ApiError(e.to_string()))?;
                 let text = String::from_utf8_lossy(&bytes);
-                
+
                 for line in text.lines() {
                     if line.starts_with("data: ") {
                         let data = &line[6..];
                         if data == "[DONE]" { continue; }
-                        
+
                         if let Ok(chunk) = serde_json::from_str::<OpenAIStreamResponse>(data) {
                             if let Some(choice) = chunk.choices.first() {
                                 if let Some(content) = &choice.delta.content {

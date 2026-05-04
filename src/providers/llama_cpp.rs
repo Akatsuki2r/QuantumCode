@@ -134,7 +134,10 @@ impl LlamaCppProvider {
             return Some(path_as_name);
         }
 
-        tracing::warn!("LlamaCpp: Could not resolve model path for '{}'", model_name);
+        tracing::warn!(
+            "LlamaCpp: Could not resolve model path for '{}'",
+            model_name
+        );
         None
     }
 

@@ -2,8 +2,8 @@
 
 use color_eyre::eyre::Result;
 
-use crate::cli::SessionCommands;
 use crate::app::Session;
+use crate::cli::SessionCommands;
 
 /// Run session command
 pub async fn run(command: SessionCommands) -> Result<()> {
@@ -30,7 +30,12 @@ fn list_sessions() -> Result<()> {
         println!("{:-<80}", "");
         for session in sessions {
             let name = session.name.unwrap_or_else(|| "unnamed".to_string());
-            println!("{:<38} {:<20} {:<20}", session.id, name, session.updated.format("%Y-%m-%d %H:%M"));
+            println!(
+                "{:<38} {:<20} {:<20}",
+                session.id,
+                name,
+                session.updated.format("%Y-%m-%d %H:%M")
+            );
         }
     }
 

@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use directories::ProjectDirs;
+use std::path::PathBuf;
 
 /// Get the base directory for session storage
 pub fn get_sessions_dir() -> PathBuf {

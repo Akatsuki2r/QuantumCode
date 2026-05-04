@@ -158,7 +158,9 @@ impl App {
             Box::new(crate::providers::AnthropicProvider::new()),
             Box::new(crate::providers::OpenAIProvider::new()),
             Box::new(crate::providers::OllamaProvider::new()),
-            Box::new(crate::providers::LlamaCppProvider::new(settings.llama_cpp.clone())),
+            Box::new(crate::providers::LlamaCppProvider::new(
+                settings.llama_cpp.clone(),
+            )),
             Box::new(crate::providers::LmStudioProvider::new()),
             Box::new(crate::providers::GroqProvider::new()),
             Box::new(crate::providers::GeminiProvider::new()),
@@ -264,8 +266,11 @@ impl App {
     /// Add a debug log entry
     pub fn debug_log(&mut self, message: &str) {
         tracing::debug!(target: "debug_console", "{}", message);
-        self.ui_debug_logs.push(format!("[{}] {}", Utc::now().format("%H:%M:%S"), message));
-        if self.ui_debug_logs.len() > 100 { self.ui_debug_logs.remove(0); }
+        self.ui_debug_logs
+            .push(format!("[{}] {}", Utc::now().format("%H:%M:%S"), message));
+        if self.ui_debug_logs.len() > 100 {
+            self.ui_debug_logs.remove(0);
+        }
     }
 
     /// Toggle command palette visibility
@@ -282,7 +287,11 @@ impl App {
 
     /// Search the RAG index for relevant context
     /// Uses the provided token budget to limit the number of retrieved chunks.
-    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
+    pub fn search_context(
+        &self,
+        query: &str,
+        token_budget: Option<usize>,
+    ) -> crate::rag::RagResult {
         self.rag_index.search(query, token_budget)
     }
 
@@ -379,26 +388,31 @@ impl App {
             .filter_entry(|e| {
                 let name = e.file_name().to_string_lossy();
                 // Ignore hidden directories (.git, .vscode, etc) and common build artifacts
-                !name.starts_with('.') && name != "target" && name != "node_modules" && name != "dist"
+                !name.starts_with('.')
+                    && name != "target"
+                    && name != "node_modules"
+                    && name != "dist"
             })
             .filter_map(|e| e.ok())
         {
             if entry.file_type().is_file() {
                 let path = entry.path();
-                
+
                 // Filter for relevant text files to avoid binary noise in RAG
                 let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
                 let supported = [
-                    "rs", "toml", "md", "txt", "js", "ts", "py", "c", "cpp", "h", "json", "sh", "yaml", "yml"
+                    "rs", "toml", "md", "txt", "js", "ts", "py", "c", "cpp", "h", "json", "sh",
+                    "yaml", "yml",
                 ];
 
                 if supported.contains(&ext) {
                     if let Ok(content) = std::fs::read_to_string(path) {
-                        let relative_path = path.strip_prefix(&cwd)
+                        let relative_path = path
+                            .strip_prefix(&cwd)
                             .unwrap_or(path)
                             .to_string_lossy()
                             .to_string();
-                        
+
                         self.rag_index.add_document(relative_path, content);
                     }
                 }
@@ -406,7 +420,10 @@ impl App {
         }
 
         let doc_count = self.rag_index.document_count();
-        self.debug_log(&format!("RAG Indexing complete: {} documents indexed", doc_count));
+        self.debug_log(&format!(
+            "RAG Indexing complete: {} documents indexed",
+            doc_count
+        ));
         self.set_status(Some(format!("Indexed {} files for context", doc_count)));
     }
 
@@ -421,7 +438,9 @@ impl App {
 
         // Work backwards to keep the most recent messages
         for msg in self.session.messages.iter().rev() {
-            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
+            let tokens = msg
+                .tokens
+                .unwrap_or_else(|| Self::estimate_tokens(&msg.content));
             if current_total + tokens <= max_tokens {
                 current_total += tokens;
                 to_keep.push(msg.clone());

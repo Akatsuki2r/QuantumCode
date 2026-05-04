@@ -299,12 +299,15 @@ async fn perform_ai_request(
     messages: Vec<crate::providers::Message>,
     tx: tokio::sync::mpsc::UnboundedSender<crate::app::AiEvent>,
 ) {
-    use crate::providers::{Provider, StreamChunk, ProviderError};
     use crate::app::AiEvent;
+    use crate::providers::{Provider, ProviderError, StreamChunk};
     use futures::StreamExt;
 
     let mut full_response = String::new();
-    let _ = tx.send(AiEvent::Log(format!("Inference started: provider={}, model={}", provider_name, model)));
+    let _ = tx.send(AiEvent::Log(format!(
+        "Inference started: provider={}, model={}",
+        provider_name, model
+    )));
 
     match provider_name.as_str() {
         "ollama" => {
@@ -346,7 +349,10 @@ async fn perform_ai_request(
             }
         }
         _ => {
-            let _ = tx.send(AiEvent::Error(format!("Unknown provider: {}", provider_name)));
+            let _ = tx.send(AiEvent::Error(format!(
+                "Unknown provider: {}",
+                provider_name
+            )));
         }
     }
 }
