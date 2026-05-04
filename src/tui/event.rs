@@ -13,6 +13,36 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
     // Background maintenance
     app.update_git_status();
 
+    // Process background AI updates
+    let mut finished = false;
+    // Take the receiver out of the app state to avoid double mutable borrowing
+    if let Some(mut rx) = app.ai_response_rx.take() {
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                crate::app::AiEvent::Chunk(content) => {
+                    if let Some(msg) = app.session.messages.last_mut() {
+                        msg.content = content;
+                    }
+                }
+                crate::app::AiEvent::Log(msg) => {
+                    app.debug_log(&msg);
+                }
+                crate::app::AiEvent::Error(err) => {
+                    app.add_message("system", &format!("✗ Error: {}", err));
+                    finished = true;
+                }
+                crate::app::AiEvent::Done => {
+                    finished = true;
+                }
+            }
+        }
+
+        // Put the receiver back if the stream is still active
+        if !finished {
+            app.ai_response_rx = Some(rx);
+        }
+    }
+
     if crossterm::event::poll(Duration::from_millis(100))? {
         match crossterm::event::read()? {
             Event::Key(key) => {
@@ -20,17 +50,32 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
                     return handle_key_event(app, key).await;
                 }
             }
-            Event::Mouse(mouse) => match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    app.auto_scroll = false;
-                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
+            Event::Mouse(mouse) => {
+                let (width, _) = crossterm::terminal::size().unwrap_or((0, 0));
+                let is_in_debug = app.show_debug_panel && mouse.column >= width.saturating_sub(45);
+
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        if is_in_debug {
+                            app.debug_auto_scroll = false;
+                            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(3);
+                        } else {
+                            app.auto_scroll = false;
+                            app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if is_in_debug {
+                            app.debug_auto_scroll = false;
+                            app.debug_scroll_offset += 3;
+                        } else {
+                            app.auto_scroll = false;
+                            app.scroll_offset += 3;
+                        }
+                    }
+                    _ => {}
                 }
-                MouseEventKind::ScrollDown => {
-                    app.auto_scroll = false;
-                    app.scroll_offset += 3;
-                }
-                _ => {}
-            },
+            }
             Event::Resize(_, _) => {
                 // Terminal resized, will be handled on next render
             }
@@ -64,6 +109,45 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                 Mode::Focus => Mode::Chat,
                 _ => Mode::Chat, // Fallback
             };
+            return Ok(false);
+        }
+
+        // Toggle Debug Panel (Ctrl+D)
+        (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+            app.show_debug_panel = !app.show_debug_panel;
+            return Ok(false);
+        }
+
+        // Toggle Thought Process / Activity Panel (Ctrl+O)
+        (KeyModifiers::CONTROL, KeyCode::Char('o')) => {
+            app.show_debug_panel = !app.show_debug_panel;
+            return Ok(false);
+        }
+
+        // Thought Process / Debug Panel Scrolling (Alt + keys)
+        (KeyModifiers::ALT, KeyCode::Up) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(1);
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::Down) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset += 1;
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::PageUp) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(5);
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::PageDown) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset += 5;
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::End) => {
+            app.debug_auto_scroll = true;
+            app.debug_scroll_offset = 0; // Re-calculates in render
             return Ok(false);
         }
 
@@ -204,6 +288,71 @@ fn handle_focus_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<b
         _ => {
             app.mode = Mode::Chat; // Exit focus mode
             Ok(false)
+        }
+    }
+}
+
+/// Task to handle AI request in the background
+async fn perform_ai_request(
+    provider_name: String,
+    model: String,
+    messages: Vec<crate::providers::Message>,
+    tx: tokio::sync::mpsc::UnboundedSender<crate::app::AiEvent>,
+) {
+    use crate::app::AiEvent;
+    use crate::providers::{Provider, ProviderError, StreamChunk};
+    use futures::StreamExt;
+
+    let mut full_response = String::new();
+    let _ = tx.send(AiEvent::Log(format!(
+        "Inference started: provider={}, model={}",
+        provider_name, model
+    )));
+
+    match provider_name.as_str() {
+        "ollama" => {
+            let provider = crate::providers::OllamaProvider::with_model(model);
+            let mut stream = provider.send_stream(messages).await;
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        full_response.push_str(&chunk.content);
+                        let _ = tx.send(AiEvent::Chunk(full_response.clone()));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AiEvent::Error(e.to_string()));
+                        return;
+                    }
+                }
+            }
+            let _ = tx.send(AiEvent::Done);
+        }
+        "anthropic" | "opencode" | "openai" | "groq" | "gemini" => {
+            // Generic handler for non-streaming (or simplified streaming) providers
+            let provider: Box<dyn Provider> = match provider_name.as_str() {
+                "anthropic" => Box::new(crate::providers::AnthropicProvider::with_model(model)),
+                "openai" => Box::new(crate::providers::OpenAIProvider::with_model(model)),
+                "groq" => Box::new(crate::providers::GroqProvider::with_model(model)),
+                "gemini" => Box::new(crate::providers::GeminiProvider::with_model(model)),
+                _ => Box::new(crate::providers::OpenCodeProvider::with_model(model)),
+            };
+
+            match provider.send(messages).await {
+                Ok(response) => {
+                    let _ = tx.send(AiEvent::Chunk(response));
+                    let _ = tx.send(AiEvent::Done);
+                }
+                Err(e) => {
+                    let _ = tx.send(AiEvent::Error(e.to_string()));
+                }
+            }
+        }
+        _ => {
+            let _ = tx.send(AiEvent::Error(format!(
+                "Unknown provider: {}",
+                provider_name
+            )));
         }
     }
 }
@@ -422,6 +571,9 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                     // Route the prompt through the router for automatic model selection
                     let (selected_provider, selected_model) = app.route_prompt(&prompt);
 
+                    // Note: app.route_prompt already calls enforce_context_budget internally.
+                    // We just need to ensure the logic here respects the new mutable signature.
+
                     // Update session with selected provider/model
                     app.session.provider = selected_provider.clone();
                     app.session.model = selected_model.clone();
@@ -436,8 +588,9 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
                             app.session.model, selected_model, selected_provider
                         );
                         // Only update status if model/provider actually changed
-                        app.debug_log(&status);
-                        app.set_status(Some(status.clone()));
+                        if app.debug_mode {
+                            app.set_status(Some(status.clone()));
+                        }
                         app.debug_log(&status);
                     }
 
@@ -449,7 +602,32 @@ async fn handle_chat_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Res
 
                     // Initialize assistant message for streaming
                     app.add_message("assistant", "");
-                    let _ = send_to_ai(app, &prompt).await;
+
+                    // Setup async communication channel
+                    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.ai_response_rx = Some(rx);
+
+                    // Prepare data for the background task
+                    let provider_name = app.session.provider.clone();
+                    let model = app.session.model.clone();
+                    let messages: Vec<crate::providers::Message> = app
+                        .session
+                        .messages
+                        .iter()
+                        .take(app.session.messages.len().saturating_sub(1))
+                        .map(|m| crate::providers::Message {
+                            role: match m.role.as_str() {
+                                "user" => crate::providers::Role::User,
+                                "assistant" => crate::providers::Role::Assistant,
+                                "system" => crate::providers::Role::System,
+                                _ => crate::providers::Role::User,
+                            },
+                            content: m.content.clone(),
+                            name: None,
+                        })
+                        .collect();
+
+                    tokio::spawn(perform_ai_request(provider_name, model, messages, tx));
                 }
             }
             Ok(false)

@@ -64,21 +64,19 @@ fn run_tui(mut app: crate::app::App) -> Result<()> {
             \nOr run this command in a real terminal (not VS Code integrated terminal)."
         )
     })?;
+
     crossterm::execute!(
         std::io::stdout(),
         crossterm::terminal::EnterAlternateScreen,
         crossterm::event::EnableMouseCapture
     )?;
 
-    // Main loop
-    let res = tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async { run_app(&mut terminal, &mut app).await })
-    });
+    // Modern Ratatui async loop: Run directly in the existing async context
+    let mut terminal = terminal;
+    let res = futures::executor::block_on(run_app(&mut terminal, &mut app));
 
-    // Restore terminal
     restore_terminal()?;
-
-    res
+    res.map_err(|e| color_eyre::eyre::eyre!(e))
 }
 
 /// Run the main application loop

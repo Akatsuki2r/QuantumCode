@@ -269,6 +269,52 @@ impl OllamaProvider {
         None
     }
 
+    /// Resolve an Ollama model name to the local filesystem path of its GGUF blob
+    /// This allows llama.cpp and LM Studio to run models downloaded via Ollama.
+    pub fn get_model_blob_path(model_name: &str) -> Option<PathBuf> {
+        let models_path = Self::get_models_path()?;
+        let (name, tag) = if model_name.contains(':') {
+            let parts: Vec<&str> = model_name.split(':').collect();
+            (parts[0], parts[1])
+        } else {
+            (model_name, "latest")
+        };
+
+        let manifest_path = models_path
+            .join("manifests")
+            .join("registry.ollama.ai")
+            .join("library")
+            .join(name)
+            .join(tag);
+
+        if !manifest_path.exists() {
+            return None;
+        }
+
+        let content = std::fs::read_to_string(manifest_path).ok()?;
+        let json: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+        // The 'layers' array contains the model weights.
+        // We look for the one with the image.model media type.
+        if let Some(layers) = json.get("layers").and_then(|l| l.as_array()) {
+            for layer in layers {
+                if let Some(media_type) = layer.get("mediaType").and_then(|m| m.as_str()) {
+                    if media_type.contains("image.model") {
+                        if let Some(digest) = layer.get("digest").and_then(|d| d.as_str()) {
+                            // Digest is usually sha256:hash, Ollama stores blobs as sha256-hash
+                            let blob_file = digest.replace(':', "-");
+                            let full_path = models_path.join("blobs").join(blob_file);
+                            if full_path.exists() {
+                                return Some(full_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Comprehensive Ollama model detection
     /// Tries API first, then CLI, then filesystem scan
     /// Returns (models_list, detailed_info, is_running)
