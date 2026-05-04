@@ -169,6 +169,61 @@ quantumn model ollama
 quantumn model llama_cpp
 ```
 
+### Budget Hardware Optimization
+
+Quantumn Code is designed to stay useful on budget plans, local-only setups, and older machines. The current optimization strategy is:
+
+- **Compact system prompts**: mode prompts are short, direct, and project-aware so fewer tokens are sent on every request.
+- **Router-limited tools**: the agent only advertises tools allowed for the current mode, reducing prompt size and accidental tool calls.
+- **Local-first model routing**: simple work can stay on Ollama or llama.cpp instead of spending cloud tokens.
+- **Prompt cache hints**: llama.cpp completion requests use `cache_prompt = true` so repeated prompt prefixes can be reused by compatible servers.
+- **Speculative decoding**: llama.cpp can run a tiny draft model beside the main model. The draft proposes tokens quickly; the main model verifies them in batches.
+
+Enable the starter speculative decoding setup:
+
+```bash
+quantumn model --enable-speculative
+```
+
+Quantumn will explain the tradeoff, ask for confirmation, download the draft model, and update `config.toml`. For non-interactive setup:
+
+```bash
+quantumn model --enable-speculative --yes
+```
+
+Default draft model:
+
+```text
+Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF
+qwen2.5-0.5b-coder-instruct-q5_k_m.gguf
+```
+
+Why this one: it is code-oriented, GGUF-native, Apache-2.0 licensed, and around the 0.5B class, which fits the 100M-800M draft-model target. It is best paired with Qwen/Qwen-Coder main models because speculative decoding works best when the draft and main model share the tokenizer or model family. For Llama or Mistral main models, configure a tiny draft model from the same family manually:
+
+This command downloads only the draft model. You still need a main GGUF model configured under `[llama_cpp.model_paths]`.
+
+```toml
+[llama_cpp]
+auto_start = true
+speculative_decoding = true
+draft_model_path = "/path/to/same-tokenizer-draft.gguf"
+draft_max = 16
+draft_min = 0
+draft_p_min = 0.75
+```
+
+These settings map to llama.cpp's draft-model speculative decoding flags:
+
+```bash
+llama-server \
+  --spec-draft-model /path/to/draft.gguf \
+  --spec-draft-n-max 16 \
+  --spec-draft-n-min 0 \
+  --spec-draft-p-min 0.75
+```
+
+Note: speculative decoding is only used when Quantumn auto-starts `llama-server`. If you run your own llama.cpp server manually, start it with equivalent flags yourself.
+
 ### 2. Start Using
 
 **For Cloud Providers (Claude, OpenAI):**

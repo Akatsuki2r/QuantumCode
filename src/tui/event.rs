@@ -359,7 +359,7 @@ async fn perform_ai_request(
 
 /// Send a message to the AI provider and get a response
 async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    use crate::agent::{get_tools, AGENT_SYSTEM_PROMPT};
+    use crate::agent::{build_agent_system_prompt_for_tools, get_tools};
     use crate::prompts::{get_system_prompt, Mode as PromptMode};
     use crate::providers::{Message, Provider, Role};
 
@@ -395,9 +395,10 @@ async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::
         // Inject tools into the system prompt if in agentic mode
         if prompt_mode != PromptMode::Chat {
             let tool_registry = get_tools();
-            system_prompt = AGENT_SYSTEM_PROMPT
-                .replace("{{TOOLS_LIST}}", &tool_registry.list_tools())
-                .replace("{{TOOL_CALL_FORMAT}}", &tool_registry.tool_call_format());
+            system_prompt = build_agent_system_prompt_for_tools(
+                &tool_registry,
+                Some(&decision.tools.allowed_tools),
+            );
         }
 
         tracing::info!(

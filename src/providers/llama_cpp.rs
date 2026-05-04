@@ -10,31 +10,37 @@ use super::provider_trait::{Message, Provider, ProviderError, Role, StreamChunk}
 use crate::config::settings::LlamaCppConfig;
 use crate::providers::ollama::OllamaProvider;
 
-/// llama.cpp API client
+/// llama.cpp API client.
+///
+/// This provider connects to a running llama.cpp OpenAI-compatible server.
+/// Model paths are resolved from settings for validation/discovery, but requests
+/// are sent to the server using the configured model name.
 pub struct LlamaCppProvider {
     base_url: String,
-    model: String, // This will be the user-friendly name, not necessarily a path
+    model: String,
     client: reqwest::Client,
-    config: LlamaCppConfig, // Store the config to access model_paths
-    resolved_model_path: Option<PathBuf>, // Cache the resolved GGUF path
+    config: LlamaCppConfig,
+    resolved_model_path: Option<PathBuf>,
 }
 
-/// OpenAI-compatible request format used by llama.cpp server
+/// OpenAI-compatible request format used by llama.cpp server.
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {
-    model: String, // The actual GGUF file name/path might be used here, or a server-internal ID
+    model: String,
     messages: Vec<OpenAIMessage>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_prompt: Option<bool>,
 }
 
-/// OpenAI-compatible message format
+/// OpenAI-compatible message format.
 #[derive(Debug, Serialize, Deserialize)]
 struct OpenAIMessage {
     role: String,
     content: String,
 }
 
-/// OpenAI-compatible response format
+/// OpenAI-compatible response format.
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     choices: Vec<OpenAIChoice>,
@@ -45,7 +51,7 @@ struct OpenAIChoice {
     message: OpenAIMessage,
 }
 
-/// OpenAI-compatible stream response format
+/// OpenAI-compatible stream response format.
 #[derive(Debug, Deserialize)]
 struct OpenAIStreamResponse {
     choices: Vec<OpenAIStreamChoice>,
@@ -63,7 +69,7 @@ struct OpenAIStreamDelta {
 }
 
 impl LlamaCppProvider {
-    /// Create a new LlamaCpp provider
+    /// Create a new llama.cpp provider from settings.
     pub fn new(config: LlamaCppConfig) -> Self {
         let base_url = format!("http://localhost:{}", config.default_port);
         let default_model = config
@@ -71,7 +77,7 @@ impl LlamaCppProvider {
             .keys()
             .next()
             .cloned()
-            .unwrap_or_else(|| "llama3.2".to_string()); // Fallback if no models configured
+            .unwrap_or_else(|| "llama3.2".to_string());
 
         let mut provider = Self {
             base_url,
@@ -84,7 +90,7 @@ impl LlamaCppProvider {
         provider
     }
 
-    /// Create with specific model
+    /// Create with a specific model.
     pub fn with_model(model: String, config: LlamaCppConfig) -> Self {
         let mut provider = Self::new(config);
         provider.model = model;
@@ -92,9 +98,13 @@ impl LlamaCppProvider {
         provider
     }
 
-    /// Resolve the model name to a GGUF file path
+    /// Compatibility constructor for callers that want a borrowed settings config.
+    pub fn from_config(config: &LlamaCppConfig) -> Self {
+        Self::new(config.clone())
+    }
+
+    /// Resolve a model name to a GGUF file path when possible.
     fn resolve_model_path(&self, model_name: &str) -> Option<PathBuf> {
-        // 1. Check explicit configuration in settings
         if let Some(path_str) = self.config.model_paths.get(model_name) {
             let path = PathBuf::from(path_str);
             if path.exists() {
@@ -104,26 +114,15 @@ impl LlamaCppProvider {
                     path
                 );
                 return Some(path);
-            } else {
-                tracing::warn!(
-                    "LlamaCpp: Configured model path for '{}' does not exist: {:?}",
-                    model_name,
-                    path
-                );
             }
-        }
 
-        // 2. Try to resolve as an Ollama model blob
-        if let Some(ollama_path) = OllamaProvider::get_model_blob_path(model_name) {
-            tracing::debug!(
-                "LlamaCpp: Resolved model '{}' as Ollama blob: {:?}",
+            tracing::warn!(
+                "LlamaCpp: Configured model path for '{}' does not exist: {:?}",
                 model_name,
-                ollama_path
+                path
             );
-            return Some(ollama_path);
         }
 
-        // 3. Check if the model name itself is a direct path to a GGUF file
         let path_as_name = PathBuf::from(model_name);
         if path_as_name.exists() && path_as_name.extension().map_or(false, |ext| ext == "gguf") {
             tracing::debug!(
@@ -141,7 +140,7 @@ impl LlamaCppProvider {
         None
     }
 
-    /// Convert internal messages to OpenAI format
+    /// Convert internal messages to OpenAI format.
     fn convert_messages(&self, messages: Vec<Message>) -> Vec<OpenAIMessage> {
         messages
             .into_iter()
@@ -156,10 +155,10 @@ impl LlamaCppProvider {
             .collect()
     }
 
-    /// Check if llama.cpp server is running
+    /// Check if llama.cpp server is running.
     pub async fn is_running(&self) -> bool {
         self.client
-            .get(format!("{}/health", self.base_url)) // Assuming a health endpoint
+            .get(format!("{}/health", self.base_url))
             .send()
             .await
             .map(|r| r.status().is_success())
@@ -169,8 +168,6 @@ impl LlamaCppProvider {
 
 impl Default for LlamaCppProvider {
     fn default() -> Self {
-        // This default is problematic as it needs LlamaCppConfig.
-        // For now, create a default config. In a real app, this should be passed.
         Self::new(LlamaCppConfig::default())
     }
 }
@@ -184,7 +181,6 @@ impl Provider for LlamaCppProvider {
     fn models(&self) -> Vec<String> {
         let mut models = self.config.model_paths.keys().cloned().collect::<Vec<_>>();
 
-        // Add dynamically discovered Ollama models that can be resolved
         let (ollama_names, _, _) = OllamaProvider::detect_models_comprehensive();
         for name in ollama_names {
             if self.resolve_model_path(&name).is_some() && !models.contains(&name) {
@@ -205,7 +201,6 @@ impl Provider for LlamaCppProvider {
     }
 
     fn is_configured(&self) -> bool {
-        // Llama.cpp needs a model path to be resolved to be considered configured
         self.resolved_model_path.is_some()
     }
 
@@ -218,18 +213,12 @@ impl Provider for LlamaCppProvider {
         messages: Vec<Message>,
         system: Option<&str>,
     ) -> Result<String, ProviderError> {
-        // Ensure a model path is resolved before attempting to send
         let _ = self.resolved_model_path.as_ref().ok_or_else(|| {
             ProviderError::ConfigError(format!(
-                // Changed from ConfigurationError
                 "Model path for '{}' not resolved. Cannot send to llama.cpp server.",
                 self.model
             ))
         })?;
-
-        // The llama.cpp server's OpenAI-compatible API usually expects a model ID,
-        // not a file path. We use the model name as the ID.
-        let model_id_for_api = self.model.clone();
 
         let mut all_messages = Vec::new();
         if let Some(sys) = system {
@@ -241,9 +230,10 @@ impl Provider for LlamaCppProvider {
         all_messages.extend(self.convert_messages(messages));
 
         let request = OpenAIRequest {
-            model: model_id_for_api,
+            model: self.model.clone(),
             messages: all_messages,
             stream: false,
+            cache_prompt: Some(true),
         };
 
         let response = self
@@ -275,25 +265,24 @@ impl Provider for LlamaCppProvider {
         &self,
         messages: Vec<Message>,
     ) -> Pin<Box<dyn Stream<Item = Result<StreamChunk, ProviderError>> + Send>> {
-        let client = self.client.clone();
-        let url = format!("{}/v1/chat/completions", self.base_url);
-
-        // Ensure a model path is resolved before attempting to send
-        let _ = self.resolved_model_path.as_ref().ok_or_else(|| {
+        if let Err(e) = self.resolved_model_path.as_ref().ok_or_else(|| {
             ProviderError::ConfigError(format!(
-                // Changed from ConfigurationError
                 "Model path for '{}' not resolved. Cannot stream from llama.cpp server.",
                 self.model
             ))
-        });
-
-        let model_id_for_api = self.model.clone(); // See comment in send_with_system
+        }) {
+            return Box::pin(futures::stream::once(async move { Err(e) }));
+        }
 
         let request = OpenAIRequest {
-            model: model_id_for_api,
+            model: self.model.clone(),
             messages: self.convert_messages(messages),
             stream: true,
+            cache_prompt: Some(true),
         };
+
+        let client = self.client.clone();
+        let url = format!("{}/v1/chat/completions", self.base_url);
 
         let stream = async_stream::try_stream! {
             let response = client
@@ -303,31 +292,40 @@ impl Provider for LlamaCppProvider {
                 .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-            let mut bytes_stream = response.bytes_stream();
-            while let Some(chunk_result) = bytes_stream.next().await {
-                let bytes = chunk_result.map_err(|e| ProviderError::ApiError(e.to_string()))?;
-                let text = String::from_utf8_lossy(&bytes);
+            if response.status().is_success() {
+                let mut bytes_stream = response.bytes_stream();
+                while let Some(chunk_result) = bytes_stream.next().await {
+                    let bytes = chunk_result.map_err(|e| ProviderError::ApiError(e.to_string()))?;
+                    let text = String::from_utf8_lossy(&bytes);
 
-                for line in text.lines() {
-                    if line.starts_with("data: ") {
-                        let data = &line[6..];
-                        if data == "[DONE]" {
-                            continue;
-                        }
+                    for line in text.lines() {
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data == "[DONE]" {
+                                yield StreamChunk {
+                                    content: String::new(),
+                                    done: true,
+                                    tokens: None,
+                                };
+                                return;
+                            }
 
-                        if let Ok(chunk) = serde_json::from_str::<OpenAIStreamResponse>(data) {
-                            if let Some(choice) = chunk.choices.first() {
-                                if let Some(content) = &choice.delta.content {
-                                    yield StreamChunk {
-                                        content: content.clone(),
-                                        done: choice.finish_reason.is_some(),
-                                        tokens: None,
-                                    };
+                            if let Ok(chunk) = serde_json::from_str::<OpenAIStreamResponse>(data) {
+                                if let Some(choice) = chunk.choices.first() {
+                                    if let Some(content) = &choice.delta.content {
+                                        yield StreamChunk {
+                                            content: content.clone(),
+                                            done: choice.finish_reason.is_some(),
+                                            tokens: None,
+                                        };
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            } else {
+                let error_text = response.text().await.unwrap_or_default();
+                Err(ProviderError::ApiError(error_text))?;
             }
         };
 
@@ -339,7 +337,28 @@ impl Provider for LlamaCppProvider {
     }
 
     fn cost_per_million(&self) -> (f64, f64) {
-        // Llama.cpp is free (local)
         (0.0, 0.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_provider_has_fallback_model() {
+        let provider = LlamaCppProvider::default();
+        assert_eq!(provider.current_model(), "llama3.2");
+    }
+
+    #[test]
+    fn test_config_models_are_listed() {
+        let mut config = LlamaCppConfig::default();
+        config
+            .model_paths
+            .insert("test-model".to_string(), "/tmp/test-model.gguf".to_string());
+
+        let provider = LlamaCppProvider::new(config);
+        assert!(provider.models().contains(&"test-model".to_string()));
     }
 }

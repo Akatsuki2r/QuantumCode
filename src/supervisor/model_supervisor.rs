@@ -29,6 +29,14 @@ pub struct ModelSupervisor {
     port: u16,
     /// Mapping from model names to GGUF file paths
     model_paths: HashMap<String, PathBuf>,
+    /// Optional draft model used for llama.cpp speculative decoding
+    draft_model_path: Option<PathBuf>,
+    /// Speculative decoding draft batch size
+    draft_max: u16,
+    /// Speculative decoding minimum accepted draft length
+    draft_min: u16,
+    /// Speculative decoding probability threshold
+    draft_p_min: f32,
 }
 
 impl ModelSupervisor {
@@ -39,6 +47,10 @@ impl ModelSupervisor {
             process: None,
             port: DEFAULT_PORT,
             model_paths: HashMap::new(),
+            draft_model_path: None,
+            draft_max: 16,
+            draft_min: 0,
+            draft_p_min: 0.75,
         }
     }
 
@@ -49,6 +61,10 @@ impl ModelSupervisor {
             process: None,
             port,
             model_paths: HashMap::new(),
+            draft_model_path: None,
+            draft_max: 16,
+            draft_min: 0,
+            draft_p_min: 0.75,
         }
     }
 
@@ -60,6 +76,20 @@ impl ModelSupervisor {
     /// Set the port for the server
     pub fn set_port(&mut self, port: u16) {
         self.port = port;
+    }
+
+    /// Configure llama.cpp speculative decoding for auto-started servers.
+    pub fn set_speculative_decoding(
+        &mut self,
+        draft_model_path: Option<PathBuf>,
+        draft_max: u16,
+        draft_min: u16,
+        draft_p_min: f32,
+    ) {
+        self.draft_model_path = draft_model_path;
+        self.draft_max = draft_max;
+        self.draft_min = draft_min;
+        self.draft_p_min = draft_p_min;
     }
 
     /// Get the base URL for the server
@@ -120,6 +150,17 @@ impl ModelSupervisor {
 
         let mut cmd = Command::new("llama-server");
         cmd.arg(&model_arg).arg(&port_arg).arg(&ctx_arg);
+
+        if let Some(draft_model_path) = &self.draft_model_path {
+            if !draft_model_path.exists() {
+                return Err(eyre!("Draft model file not found: {:?}", draft_model_path));
+            }
+
+            cmd.arg(format!("--spec-draft-model={}", draft_model_path.display()))
+                .arg(format!("--spec-draft-n-max={}", self.draft_max))
+                .arg(format!("--spec-draft-n-min={}", self.draft_min))
+                .arg(format!("--spec-draft-p-min={}", self.draft_p_min));
+        }
 
         // Start the process
         let child = cmd
