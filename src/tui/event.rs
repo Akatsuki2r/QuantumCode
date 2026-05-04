@@ -241,6 +241,61 @@ fn handle_focus_mode(app: &mut App, key: crossterm::event::KeyEvent) -> Result<b
     }
 }
 
+/// Task to handle AI request in the background
+async fn perform_ai_request(
+    provider_name: String,
+    model: String,
+    messages: Vec<crate::providers::Message>,
+    tx: tokio::sync::mpsc::UnboundedSender<crate::app::AiEvent>,
+) {
+    use crate::providers::Provider;
+    use crate::app::AiEvent;
+
+    let mut full_response = String::new();
+
+    match provider_name.as_str() {
+        "ollama" => {
+            let provider = crate::providers::OllamaProvider::with_model(model);
+            let mut stream = provider.send_stream(messages).await;
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        full_response.push_str(&chunk.content);
+                        let _ = tx.send(AiEvent::Chunk(full_response.clone()));
+                    }
+                    Err(e) => {
+                        let _ = tx.send(AiEvent::Error(e.to_string()));
+                        return;
+                    }
+                }
+            }
+            let _ = tx.send(AiEvent::Done);
+        }
+        "anthropic" | "opencode" | "openai" => {
+            // Generic handler for non-streaming (or simplified streaming) providers
+            let provider: Box<dyn Provider> = match provider_name.as_str() {
+                "anthropic" => Box::new(crate::providers::AnthropicProvider::with_model(model)),
+                "openai" => Box::new(crate::providers::OpenAIProvider::with_model(model)),
+                _ => Box::new(crate::providers::OpenCodeProvider::with_model(model)),
+            };
+
+            match provider.send(messages).await {
+                Ok(response) => {
+                    let _ = tx.send(AiEvent::Chunk(response));
+                    let _ = tx.send(AiEvent::Done);
+                }
+                Err(e) => {
+                    let _ = tx.send(AiEvent::Error(e.to_string()));
+                }
+            }
+        }
+        _ => {
+            let _ = tx.send(AiEvent::Error(format!("Unknown provider: {}", provider_name)));
+        }
+    }
+}
+
 /// Send a message to the AI provider and get a response
 async fn send_to_ai(app: &mut App, prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
     use crate::agent::{get_tools, AGENT_SYSTEM_PROMPT};

@@ -139,6 +139,8 @@ pub struct App {
     pub last_git_check: Instant,
     /// Glob patterns for RAG indexing
     pub rag_include_patterns: Vec<String>,
+    /// Receiver for async AI responses to prevent UI blocking
+    pub ai_response_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AiEvent>>,
 }
 
 impl App {
@@ -185,6 +187,7 @@ impl App {
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
             rag_include_patterns: vec!["src/**/*.rs".to_string()],
+            ai_response_rx: None,
         }
         .initialize()
     }
@@ -266,36 +269,6 @@ impl App {
     /// Add a file to the RAG index
     pub fn index_file(&mut self, path: String, content: String) {
         self.rag_index.add_document(path, content);
-    }
-
-    /// Index all Rust source files in the current project
-    pub fn index_project_files(&mut self) {
-        use crate::tools::glob::find_files;
-        use std::path::Path;
-
-        let base = Path::new(".");
-        let mut paths_to_index = HashSet::new();
-
-        for pattern in &self.rag_include_patterns {
-            if let Ok(matches) = find_files(pattern, base) {
-                for path in matches {
-                    paths_to_index.insert(path);
-                }
-            }
-        }
-
-        for path in paths_to_index {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let path_str = path.to_string_lossy().to_string();
-                self.index_file(path_str, content);
-            }
-        }
-
-        tracing::debug!(
-            target: "rag",
-            "Indexed {} files into RAG",
-            self.rag_index.document_count()
-        );
     }
 
     /// Route a prompt through the router and automatically select model
@@ -521,35 +494,6 @@ impl App {
     pub fn estimate_tokens(text: &str) -> usize {
         // Rough approximation: ~4 characters per token
         text.len() / 4
-    }
-
-    /// Enforce a token budget on message history by removing oldest messages
-    pub fn enforce_context_budget(&mut self, max_tokens: usize) {
-        if self.session.messages.is_empty() {
-            return;
-        }
-
-        let mut current_total = 0;
-        let mut to_keep = Vec::new();
-
-        // Work backwards to keep the most recent messages
-        for msg in self.session.messages.iter().rev() {
-            // Use existing token count or estimate if missing
-            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
-            if current_total + tokens <= max_tokens {
-                current_total += tokens;
-                to_keep.push(msg.clone());
-            } else {
-                break;
-            }
-        }
-
-        if to_keep.len() < self.session.messages.len() {
-            to_keep.reverse(); // Restore original order
-            let removed = self.session.messages.len() - to_keep.len();
-            tracing::info!(target: "app", "Trimmed {} messages to stay within {} token budget", removed, max_tokens);
-            self.session.messages = to_keep;
-        }
     }
 
     /// Save the current session to disk
