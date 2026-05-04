@@ -1,7 +1,9 @@
 //! Application state management
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::config::settings::Settings;
@@ -24,7 +26,7 @@ pub enum Mode {
 }
 
 /// A single message in the conversation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     /// Role (user, assistant, system)
     pub role: String,
@@ -37,7 +39,7 @@ pub struct Message {
 }
 
 /// A file in the context
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileContext {
     /// File path
     pub path: String,
@@ -48,7 +50,7 @@ pub struct FileContext {
 }
 
 /// Session information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     /// Session ID
     pub id: String,
@@ -236,8 +238,9 @@ impl App {
     }
 
     /// Search the RAG index for relevant context
-    pub fn search_context(&self, query: &str) -> crate::rag::RagResult {
-        self.rag_index.search(query)
+    /// Uses the provided token budget to limit the number of retrieved chunks.
+    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
+        self.rag_index.search(query, token_budget)
     }
 
     /// Add a file to the RAG index
@@ -277,7 +280,7 @@ impl App {
 
     /// Route a prompt through the router and automatically select model
     /// Returns (provider, model) pair based on router decision
-    pub fn route_prompt(&self, prompt: &str) -> (String, String) {
+    pub fn route_prompt(&mut self, prompt: &str) -> (String, String) {
         use crate::router::{model::get_model_for_tier_with_local, route};
 
         if !self.router_enabled {
@@ -314,6 +317,10 @@ impl App {
             decision.model_tier.as_str(),
             decision.confidence
         );
+
+        // Enforce context budget from routing decision
+        let max_tokens = decision.context_budget.tokens();
+        self.enforce_context_budget(max_tokens);
 
         // Map model tier to actual provider/model
         // Local tier uses discovered Ollama models, others use cloud providers
@@ -424,6 +431,50 @@ impl App {
         // Rough approximation: ~4 characters per token
         text.len() / 4
     }
+
+    /// Enforce a token budget on message history by removing oldest messages
+    pub fn enforce_context_budget(&mut self, max_tokens: usize) {
+        if self.session.messages.is_empty() {
+            return;
+        }
+
+        let mut current_total = 0;
+        let mut to_keep = Vec::new();
+
+        // Work backwards to keep the most recent messages
+        for msg in self.session.messages.iter().rev() {
+            // Use existing token count or estimate if missing
+            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
+            if current_total + tokens <= max_tokens {
+                current_total += tokens;
+                to_keep.push(msg.clone());
+            } else {
+                break;
+            }
+        }
+
+        if to_keep.len() < self.session.messages.len() {
+            to_keep.reverse(); // Restore original order
+            let removed = self.session.messages.len() - to_keep.len();
+            tracing::info!(target: "app", "Trimmed {} messages to stay within {} token budget", removed, max_tokens);
+            self.session.messages = to_keep;
+        }
+    }
+
+    /// Save the current session to disk
+    pub fn save_session(&self) -> std::io::Result<()> {
+        self.session.save()
+    }
+
+    /// Load a session from disk and set it as the current session
+    pub fn load_session(&mut self, id: &str) -> std::io::Result<()> {
+        let session = Session::load(id)?;
+        self.session = session;
+        self.scroll_offset = 0;
+        self.auto_scroll = true;
+        self.status = Some(format!("Loaded session: {}", id));
+        Ok(())
+    }
 }
 
 impl Session {
@@ -442,6 +493,58 @@ impl Session {
             provider: "anthropic".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
         }
+    }
+
+    /// Get the path where a session should be stored
+    fn get_storage_path(id: &str) -> PathBuf {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home)
+            .join(".config")
+            .join("quantumn-code")
+            .join("sessions")
+            .join(format!("{}.json", id))
+    }
+
+    /// Save the session to disk as a JSON file
+    pub fn save(&self) -> std::io::Result<()> {
+        let path = Self::get_storage_path(&self.id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(&path, json)?;
+        tracing::info!("Session saved successfully to {:?}", path);
+        Ok(())
+    }
+
+    /// Load a session from disk by its ID
+    pub fn load(id: &str) -> std::io::Result<Self> {
+        let path = Self::get_storage_path(id);
+        let json = std::fs::read_to_string(path)?;
+        let session: Session = serde_json::from_str(&json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        Ok(session)
+    }
+
+    /// List all saved sessions from the storage directory
+    pub fn list() -> Vec<Session> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let dir = PathBuf::from(home).join(".config/quantumn-code/sessions");
+        let mut sessions = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    if let Ok(session) = serde_json::from_str::<Session>(&content) {
+                        sessions.push(session);
+                    }
+                }
+            }
+        }
+        // Sort by most recently updated first
+        sessions.sort_by(|a, b| b.updated.cmp(&a.updated));
+        sessions
     }
 
     /// Create a named session

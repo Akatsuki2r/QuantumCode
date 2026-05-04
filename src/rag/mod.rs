@@ -275,8 +275,17 @@ impl RagIndex {
     }
 
     /// Search the index
-    pub fn search(&self, query: &str) -> RagResult {
-        let retriever = KeywordRetriever::new(self.config.clone());
+    pub fn search(&self, query: &str, token_budget: Option<usize>) -> RagResult {
+        let mut config = self.config.clone();
+
+        if let Some(budget) = token_budget {
+            // Dynamically adjust max chunks based on the allocated context budget.
+            // We allow RAG context to occupy up to 30% of the total context window.
+            let rag_tokens = (budget as f32 * 0.3) as usize;
+            config.max_chunks = (rag_tokens / config.chunk_size).clamp(1, 15);
+        }
+
+        let retriever = KeywordRetriever::new(config);
         let docs: Vec<&Document> = self.documents.values().collect();
         retriever.retrieve(
             query,
@@ -402,7 +411,7 @@ mod tests {
 
         assert_eq!(index.document_count(), 2);
 
-        let result = index.search("main");
+        let result = index.search("main", None);
         assert!(result.used);
     }
 

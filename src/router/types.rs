@@ -66,6 +66,7 @@ impl Intent {
 // =============================================================================
 
 /// Complexity - estimated task difficulty
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Complexity {
@@ -204,6 +205,7 @@ impl ModelTier {
 // =============================================================================
 
 /// ContextBudget - token budget for conversation context
+#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ContextBudget {
