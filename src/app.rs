@@ -32,6 +32,8 @@ pub enum AiEvent {
     Chunk(String),
     /// Error occurred during streaming
     Error(String),
+    /// Log message from the background process
+    Log(String),
     /// Streaming completed
     Done,
 }
@@ -117,6 +119,10 @@ pub struct App {
     pub show_debug_panel: bool,
     /// Internal buffer for TUI debug display (latest 50)
     pub ui_debug_logs: Vec<String>,
+    /// Scroll offset for the debug panel
+    pub debug_scroll_offset: usize,
+    /// Whether to automatically scroll to the bottom of the debug panel
+    pub debug_auto_scroll: bool,
     /// Input buffer for the command palette
     pub command_palette_input: String,
     /// Cursor position in command palette input
@@ -162,6 +168,16 @@ impl App {
                 provider: "anthropic".to_string(),
                 model: "claude-sonnet-4-20250514".to_string(),
             },
+            providers: vec![
+                Box::new(crate::providers::AnthropicProvider::new()),
+                Box::new(crate::providers::OpenAIProvider::new()),
+                Box::new(crate::providers::OllamaProvider::new()),
+                Box::new(crate::providers::LlamaCppProvider::new(settings.llama_cpp.clone())),
+                Box::new(crate::providers::LmStudioProvider::new()),
+                Box::new(crate::providers::GroqProvider::new()),
+                Box::new(crate::providers::GeminiProvider::new()),
+                Box::new(crate::providers::OpenCodeProvider::new()),
+            ],
             mode: Mode::Chat,
             should_quit: false,
             input: String::new(),
@@ -176,6 +192,8 @@ impl App {
             debug_mode: false,
             show_debug_panel: false,
             ui_debug_logs: Vec::new(),
+            debug_scroll_offset: 0,
+            debug_auto_scroll: true,
             command_palette_input: String::new(),
             command_palette_cursor_position: 0,
             command_palette_active: false,
@@ -187,7 +205,6 @@ impl App {
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
             rag_include_patterns: vec!["src/**/*.rs".to_string()],
-            ai_response_rx: None,
         }
         .initialize()
     }
@@ -246,6 +263,8 @@ impl App {
     /// Add a debug log entry
     pub fn debug_log(&mut self, message: &str) {
         tracing::debug!(target: "debug_console", "{}", message);
+        self.ui_debug_logs.push(format!("[{}] {}", Utc::now().format("%H:%M:%S"), message));
+        if self.ui_debug_logs.len() > 100 { self.ui_debug_logs.remove(0); }
     }
 
     /// Toggle command palette visibility
@@ -300,6 +319,7 @@ impl App {
         );
 
         let decision = route(prompt, &cwd, &self.router_config);
+        self.debug_log(&format!("Router Decision: {}", decision.reasoning));
 
         tracing::info!(
             target: "router",
@@ -326,13 +346,13 @@ impl App {
                 if crate::router::model::has_local_models() {
                     "ollama".to_string()
                 } else {
-                    // Fall back to opencode if no local models
-                    "opencode".to_string()
+                    // Fall back to Gemini if no local models are available
+                    "gemini".to_string()
                 }
             }
             crate::router::ModelTier::OpenCode => "opencode".to_string(),
-            crate::router::ModelTier::Fast => "anthropic".to_string(),
-            crate::router::ModelTier::Standard => "anthropic".to_string(),
+            crate::router::ModelTier::Fast => "gemini".to_string(),
+            crate::router::ModelTier::Standard => "groq".to_string(),
             crate::router::ModelTier::Capable => "anthropic".to_string(),
         };
 
@@ -350,7 +370,7 @@ impl App {
     pub fn index_project_files(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-        tracing::info!("Indexing project files in {:?}", cwd);
+        self.debug_log(&format!("RAG: Scanning project files in {:?}", cwd));
 
         // Traverse the filesystem starting from current directory using walkdir
         for entry in walkdir::WalkDir::new(&cwd)
@@ -385,7 +405,7 @@ impl App {
         }
 
         let doc_count = self.rag_index.document_count();
-        tracing::info!("RAG indexing complete: {} documents indexed", doc_count);
+        self.debug_log(&format!("RAG Indexing complete: {} documents indexed", doc_count));
         self.set_status(Some(format!("Indexed {} files for context", doc_count)));
     }
 

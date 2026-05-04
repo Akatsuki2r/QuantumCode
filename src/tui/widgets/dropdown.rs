@@ -95,6 +95,8 @@ impl DropdownSelector {
             let env_var = match provider.name.as_str() {
                 "anthropic" => std::env::var("ANTHROPIC_API_KEY").is_ok(),
                 "openai" => std::env::var("OPENAI_API_KEY").is_ok(),
+            "groq" => std::env::var("GROQ_API_KEY").is_ok(),
+            "gemini" => std::env::var("GEMINI_API_KEY").is_ok(),
                 _ => true,
             };
             return env_var;
@@ -111,6 +113,8 @@ impl DropdownSelector {
         match provider.name.as_str() {
             "anthropic" => Some("ANTHROPIC_API_KEY"),
             "openai" => Some("OPENAI_API_KEY"),
+            "groq" => Some("GROQ_API_KEY"),
+            "gemini" => Some("GEMINI_API_KEY"),
             _ => None,
         }
     }
@@ -131,6 +135,31 @@ impl DropdownSelector {
                     "claude-haiku-4-20250514".to_string(),
                     "claude-3-5-sonnet-20241022".to_string(),
                     "claude-3-5-haiku-20241022".to_string(),
+                ],
+                false,
+            ),
+            ProviderInfo::new(
+                "groq",
+                "Groq (Cloud)",
+                true,
+                "llama-3.3-70b-versatile",
+                vec![
+                    "llama-3.3-70b-versatile".to_string(),
+                    "llama3-70b-8192".to_string(),
+                    "mixtral-8x7b-32768".to_string(),
+                    "gemma2-9b-it".to_string(),
+                ],
+                false,
+            ),
+            ProviderInfo::new(
+                "gemini",
+                "Gemini (Cloud)",
+                true,
+                "gemini-1.5-flash",
+                vec![
+                    "gemini-1.5-pro".to_string(),
+                    "gemini-1.5-flash".to_string(),
+                    "gemini-1.0-pro".to_string(),
                 ],
                 false,
             ),
@@ -175,8 +204,8 @@ impl DropdownSelector {
                 "llama_cpp",
                 "llama.cpp (Local)",
                 false,
-                "llama3.2",
-                vec!["llama3.2".to_string(), "mistral".to_string()],
+                llama_cpp_models.first().map(|s| s.as_str()).unwrap_or("llama3.2"),
+                llama_cpp_models.clone(),
                 true,
             ),
         ]
@@ -209,6 +238,19 @@ impl DropdownSelector {
             "phi3".to_string(),
             "gemma2".to_string(),
         ]
+    }
+
+    /// Get detected llama.cpp models from local discovery
+    fn get_detected_llama_cpp_models() -> Vec<String> {
+        // This should ideally use the LlamaCppConfig from the App's settings.
+        // For now, we use a default LlamaCppProvider to get its model list.
+        let provider = crate::providers::LlamaCppProvider::default();
+        let models = provider.models();
+        if !models.is_empty() {
+            return models;
+        }
+        // Default hardcoded list if nothing detected
+        vec!["llama3.2".to_string(), "mistral".to_string()]
     }
 
     /// Refresh the list of Ollama models (call after model download/deletion)

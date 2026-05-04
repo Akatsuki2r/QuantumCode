@@ -21,7 +21,7 @@ Q1 2026          Q2 2026          Q3 2026          Q4 2026
 
 ### Goals
 - [x] Core router implementation (7 layers)
-- [x] Provider system (Anthropic, OpenAI, Ollama, LM Studio, llama.cpp)
+- [x] Provider system (Anthropic, OpenAI, Groq, Gemini, Ollama, LM Studio)
 - [x] Local LLM auto-discovery
 - [x] Basic TUI
 - [x] CLI commands

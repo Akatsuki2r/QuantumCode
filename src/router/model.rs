@@ -139,8 +139,8 @@ pub fn estimate_cost_per_1k(tier: ModelTier) -> f64 {
     match tier {
         ModelTier::Local => 0.0,    // No API cost
         ModelTier::OpenCode => 0.0, // Free
-        ModelTier::Fast => 0.25,    // Haiku pricing
-        ModelTier::Standard => 1.0, // Sonnet pricing
+        ModelTier::Fast => 0.1,     // Gemini 1.5 Flash pricing
+        ModelTier::Standard => 0.6, // Groq (Llama 3.3 70B) pricing
         ModelTier::Capable => 3.0,  // Opus pricing
     }
 }
@@ -242,8 +242,8 @@ mod tests {
     fn test_estimate_cost_per_1k() {
         assert_eq!(estimate_cost_per_1k(ModelTier::Local), 0.0);
         assert_eq!(estimate_cost_per_1k(ModelTier::OpenCode), 0.0);
-        assert_eq!(estimate_cost_per_1k(ModelTier::Fast), 0.25);
-        assert_eq!(estimate_cost_per_1k(ModelTier::Standard), 1.0);
+        assert_eq!(estimate_cost_per_1k(ModelTier::Fast), 0.1);
+        assert_eq!(estimate_cost_per_1k(ModelTier::Standard), 0.6);
         assert_eq!(estimate_cost_per_1k(ModelTier::Capable), 3.0);
     }
 

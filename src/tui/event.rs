@@ -24,6 +24,9 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
                         msg.content = content;
                     }
                 }
+                crate::app::AiEvent::Log(msg) => {
+                    app.debug_log(&msg);
+                }
                 crate::app::AiEvent::Error(err) => {
                     app.add_message("system", &format!("✗ Error: {}", err));
                     finished = true;
@@ -47,17 +50,32 @@ pub async fn handle_events(app: &mut App) -> Result<bool> {
                     return handle_key_event(app, key).await;
                 }
             }
-            Event::Mouse(mouse) => match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    app.auto_scroll = false;
-                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
+            Event::Mouse(mouse) => {
+                let (width, _) = crossterm::terminal::size().unwrap_or((0, 0));
+                let is_in_debug = app.show_debug_panel && mouse.column >= width.saturating_sub(45);
+
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        if is_in_debug {
+                            app.debug_auto_scroll = false;
+                            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(3);
+                        } else {
+                            app.auto_scroll = false;
+                            app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if is_in_debug {
+                            app.debug_auto_scroll = false;
+                            app.debug_scroll_offset += 3;
+                        } else {
+                            app.auto_scroll = false;
+                            app.scroll_offset += 3;
+                        }
+                    }
+                    _ => {}
                 }
-                MouseEventKind::ScrollDown => {
-                    app.auto_scroll = false;
-                    app.scroll_offset += 3;
-                }
-                _ => {}
-            },
+            }
             Event::Resize(_, _) => {
                 // Terminal resized, will be handled on next render
             }
@@ -97,6 +115,39 @@ async fn handle_key_event(app: &mut App, key: crossterm::event::KeyEvent) -> Res
         // Toggle Debug Panel (Ctrl+D)
         (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
             app.show_debug_panel = !app.show_debug_panel;
+            return Ok(false);
+        }
+
+        // Toggle Thought Process / Activity Panel (Ctrl+O)
+        (KeyModifiers::CONTROL, KeyCode::Char('o')) => {
+            app.show_debug_panel = !app.show_debug_panel;
+            return Ok(false);
+        }
+
+        // Thought Process / Debug Panel Scrolling (Alt + keys)
+        (KeyModifiers::ALT, KeyCode::Up) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(1);
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::Down) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset += 1;
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::PageUp) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset = app.debug_scroll_offset.saturating_sub(5);
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::PageDown) => {
+            app.debug_auto_scroll = false;
+            app.debug_scroll_offset += 5;
+            return Ok(false);
+        }
+        (KeyModifiers::ALT, KeyCode::End) => {
+            app.debug_auto_scroll = true;
+            app.debug_scroll_offset = 0; // Re-calculates in render
             return Ok(false);
         }
 
@@ -248,10 +299,12 @@ async fn perform_ai_request(
     messages: Vec<crate::providers::Message>,
     tx: tokio::sync::mpsc::UnboundedSender<crate::app::AiEvent>,
 ) {
-    use crate::providers::Provider;
+    use crate::providers::{Provider, StreamChunk, ProviderError};
     use crate::app::AiEvent;
+    use futures::StreamExt;
 
     let mut full_response = String::new();
+    let _ = tx.send(AiEvent::Log(format!("Inference started: provider={}, model={}", provider_name, model)));
 
     match provider_name.as_str() {
         "ollama" => {
@@ -272,11 +325,13 @@ async fn perform_ai_request(
             }
             let _ = tx.send(AiEvent::Done);
         }
-        "anthropic" | "opencode" | "openai" => {
+        "anthropic" | "opencode" | "openai" | "groq" | "gemini" => {
             // Generic handler for non-streaming (or simplified streaming) providers
             let provider: Box<dyn Provider> = match provider_name.as_str() {
                 "anthropic" => Box::new(crate::providers::AnthropicProvider::with_model(model)),
                 "openai" => Box::new(crate::providers::OpenAIProvider::with_model(model)),
+                "groq" => Box::new(crate::providers::GroqProvider::with_model(model)),
+                "gemini" => Box::new(crate::providers::GeminiProvider::with_model(model)),
                 _ => Box::new(crate::providers::OpenCodeProvider::with_model(model)),
             };
 

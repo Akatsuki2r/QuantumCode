@@ -40,9 +40,21 @@ pub fn render(frame: &mut Frame, app: &App) {
     // Clear the entire area to prevent ghosting/artifacts from previous frames
     frame.render_widget(Clear, frame.area());
 
+    // Split layout into Chat area and optional side panel
+    let area = frame.area();
+    let main_layout = if app.show_debug_panel {
+        Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(45), // Fixed width side panel
+        ])
+        .split(area)
+    } else {
+        Layout::horizontal([Constraint::Percentage(100)]).split(area)
+    };
+
+    let chat_area = main_layout[0];
+
     // Intent-driven layout: focus on the conversation
-    // Only allocate space for suggestion bar if there's content to show
-    // Don't show empty state hint - it wastes space and can cause layout issues
     let has_suggestions = !app.input.is_empty();
     let suggestion_height = if has_suggestions { 2 } else { 0 };
 
@@ -52,7 +64,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         Constraint::Length(suggestion_height), // Suggestion bar (conditional)
         Constraint::Length(1),                 // Status bar
     ])
-    .split(frame.area());
+    .split(chat_area);
 
     render_chat(frame, chunks[0], app, &colors);
     render_input(frame, chunks[1], app, &colors);
@@ -60,6 +72,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         render_suggestions(frame, chunks[2], app, &colors);
     }
     render_status_bar(frame, chunks[3], app, &colors);
+
+    // Render the Thought Process / Debug panel if active
+    if app.show_debug_panel {
+        render_debug_panel(frame, main_layout[1], app, &colors);
+    }
 
     // Conditionally render overlays
     if matches!(app.mode, Mode::Focus) {
@@ -81,6 +98,38 @@ pub fn render(frame: &mut Frame, app: &App) {
         frame.render_widget(Clear, dropdown_area);
         app.dropdown.render(frame, dropdown_area, &colors);
     }
+}
+
+/// Render the Thought Process / Debug panel
+fn render_debug_panel(frame: &mut Frame, area: Rect, app: &App, colors: &crate::config::themes::RatatuiColors) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(colors.accent))
+        .title(" Thought Process / Activity ");
+
+    let inner_area = block.inner(area);
+
+    let logs: Vec<Line> = app.ui_debug_logs.iter()
+        .map(|log| {
+            Line::from(Span::styled(log, Style::default().fg(colors.foreground)))
+        })
+        .collect();
+
+    let total_lines = logs.len();
+    let visible_height = inner_area.height as usize;
+    let max_scroll = total_lines.saturating_sub(visible_height);
+
+    let scroll_offset = if app.debug_auto_scroll {
+        max_scroll
+    } else {
+        app.debug_scroll_offset.min(max_scroll)
+    } as u16;
+
+    let paragraph = Paragraph::new(logs)
+        .block(block)
+        .scroll((scroll_offset, 0));
+
+    frame.render_widget(paragraph, area);
 }
 
 /// Center a rect within another rect
@@ -400,6 +449,8 @@ fn render_help(
         Line::from("  Ctrl+S      - Save session"),
         Line::from("  F1          - Toggle help"),
         Line::from("  Ctrl+K      - Open Command Palette"),
+        Line::from("  Ctrl+O      - Toggle Thought Process panel"),
+        Line::from("  Alt+↑↓      - Scroll Thought Process panel"),
         Line::from("  /           - Slash commands in chat"),
         Line::from("  P           - Open provider selector"),
         Line::from("  ←→         - Switch tabs"),
