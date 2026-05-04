@@ -1,11 +1,24 @@
 //! Model/provider commands
 
-use color_eyre::eyre::Result;
-use std::path::PathBuf;
+use color_eyre::eyre::{Result, WrapErr};
+use futures::StreamExt;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+
+const DEFAULT_DRAFT_REPO: &str = "Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF";
+const DEFAULT_DRAFT_FILE: &str = "qwen2.5-0.5b-coder-instruct-q5_k_m.gguf";
+const DEFAULT_DRAFT_URL: &str = "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-coder-instruct-q5_k_m.gguf?download=true";
 
 /// Run model command
-pub async fn run(provider: Option<String>, list: bool) -> Result<()> {
-    if list {
+pub async fn run(
+    provider: Option<String>,
+    list: bool,
+    enable_speculative: bool,
+    yes: bool,
+) -> Result<()> {
+    if enable_speculative {
+        enable_speculative_decoding(yes).await?;
+    } else if list {
         list_models(provider)?;
     } else if let Some(p) = provider {
         set_provider(&p)?;
@@ -176,6 +189,7 @@ fn list_llama_cpp_models() {
     println!();
     println!("  Requires llama-server binary and GGUF model files.");
     println!("  Configure model paths in config.toml under [llama_cpp.model_paths]");
+    println!("  Optional speedup: quantumn model --enable-speculative");
 }
 
 fn list_lm_studio_models() {
@@ -256,6 +270,117 @@ fn set_provider(provider: &str) -> Result<()> {
         println!("  2. lms server start (or enable server in LM Studio GUI)");
         println!("  3. Models downloaded in LM Studio library");
     }
+
+    Ok(())
+}
+
+/// Prompt the user, download the default draft model, and enable speculative decoding.
+async fn enable_speculative_decoding(assume_yes: bool) -> Result<()> {
+    println!("Quantumn local inference optimization: speculative decoding");
+    println!();
+    println!("This enables llama.cpp draft-model speculation for auto-started llama-server.");
+    println!("It downloads a small code-oriented draft model:");
+    println!("  {} / {}", DEFAULT_DRAFT_REPO, DEFAULT_DRAFT_FILE);
+    println!();
+    println!("Best fit: Qwen/Qwen-Coder main models. For Llama/Mistral main models, set");
+    println!("llama_cpp.draft_model_path manually to a tiny model from the same tokenizer family.");
+    println!("This downloads only the draft model; your main llama.cpp GGUF still needs to be configured.");
+    println!();
+
+    if !assume_yes {
+        print!("Download the draft model and enable this optimization now? [y/N] ");
+        io::stdout().flush().ok();
+
+        let mut answer = String::new();
+        io::stdin()
+            .read_line(&mut answer)
+            .wrap_err("Failed to read confirmation")?;
+
+        let answer = answer.trim().to_ascii_lowercase();
+        if answer != "y" && answer != "yes" {
+            println!("Aborted. No config changes were made.");
+            return Ok(());
+        }
+    }
+
+    let mut settings = crate::config::Settings::load()?;
+    let config_path = crate::config::Settings::config_path()?;
+    let config_dir = config_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(".quantumn"));
+    let draft_dir = config_dir.join("models").join("draft");
+    std::fs::create_dir_all(&draft_dir).wrap_err("Failed to create draft model directory")?;
+
+    let draft_path = draft_dir.join(DEFAULT_DRAFT_FILE);
+    if draft_path.exists() {
+        println!("✓ Draft model already exists: {}", draft_path.display());
+    } else {
+        download_file(DEFAULT_DRAFT_URL, &draft_path).await?;
+    }
+
+    settings.model.provider = "llama_cpp".to_string();
+    settings.llama_cpp.enabled = true;
+    settings.llama_cpp.auto_start = true;
+    settings.llama_cpp.speculative_decoding = true;
+    settings.llama_cpp.draft_model_path = Some(draft_path.to_string_lossy().to_string());
+    settings.llama_cpp.draft_max = 16;
+    settings.llama_cpp.draft_min = 0;
+    settings.llama_cpp.draft_p_min = 0.75;
+    settings.save()?;
+
+    println!();
+    println!("✓ Speculative decoding enabled for llama.cpp.");
+    println!("  Draft model: {}", draft_path.display());
+    println!("  Config: {}", config_path.display());
+    println!("  Tune with: quantumn config set llama_cpp.draft_max 16");
+    if settings.llama_cpp.model_paths.is_empty() {
+        println!("  Next: add your main GGUF under [llama_cpp.model_paths] in config.toml.");
+    }
+
+    Ok(())
+}
+
+async fn download_file(url: &str, destination: &Path) -> Result<()> {
+    let part_path = destination.with_extension("gguf.part");
+    println!("Downloading draft model...");
+    println!("  {}", url);
+    println!("  -> {}", destination.display());
+
+    let response = reqwest::get(url)
+        .await
+        .wrap_err("Failed to start draft model download")?
+        .error_for_status()
+        .wrap_err("Draft model download returned an error status")?;
+
+    let total = response.content_length();
+    let mut stream = response.bytes_stream();
+    let mut file =
+        std::fs::File::create(&part_path).wrap_err("Failed to create partial model file")?;
+    let mut downloaded: u64 = 0;
+    let mut last_reported_mb: u64 = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.wrap_err("Failed while downloading draft model")?;
+        file.write_all(&chunk)
+            .wrap_err("Failed to write draft model chunk")?;
+        downloaded += chunk.len() as u64;
+
+        let downloaded_mb = downloaded / (1024 * 1024);
+        if downloaded_mb >= last_reported_mb + 64 {
+            last_reported_mb = downloaded_mb;
+            if let Some(total) = total {
+                let total_mb = total / (1024 * 1024);
+                println!("  {} / {} MB", downloaded_mb, total_mb);
+            } else {
+                println!("  {} MB", downloaded_mb);
+            }
+        }
+    }
+
+    file.flush().wrap_err("Failed to flush draft model file")?;
+    std::fs::rename(&part_path, destination).wrap_err("Failed to finalize draft model download")?;
+    println!("✓ Download complete");
 
     Ok(())
 }

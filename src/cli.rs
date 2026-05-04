@@ -116,6 +116,14 @@ pub enum Commands {
         /// List available models
         #[arg(short, long)]
         list: bool,
+
+        /// Prompt to enable llama.cpp speculative decoding and download a draft model
+        #[arg(long)]
+        enable_speculative: bool,
+
+        /// Skip confirmation prompts for automated setup
+        #[arg(short, long)]
+        yes: bool,
     },
 
     /// Show all AI providers

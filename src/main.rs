@@ -97,7 +97,12 @@ async fn run(cli: Cli) -> Result<()> {
 
         Some(Commands::Theme { command }) => commands::theme::run(command).await,
 
-        Some(Commands::Model { provider, list }) => commands::model::run(provider, list).await,
+        Some(Commands::Model {
+            provider,
+            list,
+            enable_speculative,
+            yes,
+        }) => commands::model::run(provider, list, enable_speculative, yes).await,
 
         Some(Commands::Provider { list }) => commands::model::run_provider(list).await,
 

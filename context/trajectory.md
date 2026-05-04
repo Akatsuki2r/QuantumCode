@@ -298,3 +298,64 @@ Quantum Code's current implementation is a **functional CLI with a naive agent l
 **The fix is not to add features — it's to build the router and wire it in.**
 
 The good news: the current tool system, provider abstraction, and agent loop structure are all correct foundations. The work is adding the intelligence layer on top, not rebuilding from scratch.
+
+---
+
+## 9. Update - 2026-05-04 Prompt and Local Inference Path
+
+### What Changed
+
+Quantumn Code has shifted from placeholder prompt prose toward a performance-first prompt contract. The goal is to preserve high coding quality while reducing recurring system/tool tokens and local prefill work.
+
+Implemented direction:
+
+1. Core and mode prompts are compact and project-aware.
+2. Agent tool schemas are short.
+3. Agent prompts can be built from router-allowed tools only.
+4. llama.cpp speculative decoding is now an explicit optimization path.
+5. The user-facing activation flow prompts before downloading a draft model or changing config.
+
+### Why
+
+Quantumn's purpose is not to be another heavy cloud-first coding assistant. It should be practical on:
+
+- budget API plans,
+- local-only workflows,
+- older CPUs/GPUs,
+- small context windows,
+- limited RAM/VRAM.
+
+That means prompt and tool metadata must be treated as runtime cost, not documentation space.
+
+### Speculative Decoding Direction
+
+llama.cpp is the starter inference engine for speculative decoding because it supports GGUF draft models and server startup flags. Quantumn now exposes config fields for:
+
+- `llama_cpp.speculative_decoding`
+- `llama_cpp.draft_model_path`
+- `llama_cpp.draft_max`
+- `llama_cpp.draft_min`
+- `llama_cpp.draft_p_min`
+
+The recommended starter draft model is:
+
+```text
+Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF
+qwen2.5-0.5b-coder-instruct-q5_k_m.gguf
+```
+
+Reasoning:
+
+- It is in the 100M-800M target range.
+- It is code-oriented.
+- It is already published as GGUF.
+- It is a better draft for Qwen/Qwen-Coder main models than a general-purpose tiny model.
+
+Important caveat: speculative decoding works best when draft and main models share tokenizer and family. For Llama/Mistral main models, users should configure a same-family draft model manually.
+
+### Next Work
+
+1. Add benchmark output for local inference with and without speculation.
+2. Add n-gram speculative mode for code editing when no draft model is available.
+3. Add per-provider prompt token accounting so prompt optimization can be measured in CI.
+4. Add config validation that warns when draft/main model families are likely mismatched.

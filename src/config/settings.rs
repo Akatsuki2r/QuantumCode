@@ -64,11 +64,11 @@ fn default_true() -> bool {
 }
 
 fn default_draft_min() -> u16 {
-    5
+    0
 }
 
 fn default_draft_p_min() -> f32 {
-    0.9
+    0.75
 }
 
 impl Default for LlamaCppConfig {

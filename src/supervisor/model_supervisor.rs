@@ -49,8 +49,8 @@ impl ModelSupervisor {
             model_paths: HashMap::new(),
             draft_model_path: None,
             draft_max: 16,
-            draft_min: 5,
-            draft_p_min: 0.9,
+            draft_min: 0,
+            draft_p_min: 0.75,
         }
     }
 
@@ -63,8 +63,8 @@ impl ModelSupervisor {
             model_paths: HashMap::new(),
             draft_model_path: None,
             draft_max: 16,
-            draft_min: 5,
-            draft_p_min: 0.9,
+            draft_min: 0,
+            draft_p_min: 0.75,
         }
     }
 
@@ -156,10 +156,10 @@ impl ModelSupervisor {
                 return Err(eyre!("Draft model file not found: {:?}", draft_model_path));
             }
 
-            cmd.arg(format!("--model-draft={}", draft_model_path.display()))
-                .arg(format!("--draft-max={}", self.draft_max))
-                .arg(format!("--draft-min={}", self.draft_min))
-                .arg(format!("--draft-p-min={}", self.draft_p_min));
+            cmd.arg(format!("--spec-draft-model={}", draft_model_path.display()))
+                .arg(format!("--spec-draft-n-max={}", self.draft_max))
+                .arg(format!("--spec-draft-n-min={}", self.draft_min))
+                .arg(format!("--spec-draft-p-min={}", self.draft_p_min));
         }
 
         // Start the process
