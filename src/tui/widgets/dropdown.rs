@@ -1,6 +1,8 @@
 //! Dropdown selector widget for providers and models
 
+use crate::config::settings::LlamaCppConfig;
 use crate::config::themes::RatatuiColors;
+use crate::providers::provider_trait::Provider; // Import the Provider trait
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -58,12 +60,15 @@ pub struct DropdownSelector {
     pub api_key_env_var: String,
     pub pending_provider: Option<String>,
     pub pending_model: Option<String>,
+    llama_cpp_config: LlamaCppConfig, // Store LlamaCppConfig
 }
 
 impl DropdownSelector {
-    pub fn new() -> Self {
+    pub fn new(llama_cpp_config: LlamaCppConfig) -> Self {
+        let providers = Self::default_providers(&llama_cpp_config);
+
         Self {
-            providers: Self::default_providers(),
+            providers,
             state: DropdownState::Closed,
             provider_index: 0,
             model_index: 0,
@@ -73,6 +78,7 @@ impl DropdownSelector {
             api_key_env_var: String::new(),
             pending_provider: None,
             pending_model: None,
+            llama_cpp_config,
         }
     }
 
@@ -95,6 +101,8 @@ impl DropdownSelector {
             let env_var = match provider.name.as_str() {
                 "anthropic" => std::env::var("ANTHROPIC_API_KEY").is_ok(),
                 "openai" => std::env::var("OPENAI_API_KEY").is_ok(),
+                "groq" => std::env::var("GROQ_API_KEY").is_ok(),
+                "gemini" => std::env::var("GEMINI_API_KEY").is_ok(),
                 _ => true,
             };
             return env_var;
@@ -111,13 +119,16 @@ impl DropdownSelector {
         match provider.name.as_str() {
             "anthropic" => Some("ANTHROPIC_API_KEY"),
             "openai" => Some("OPENAI_API_KEY"),
+            "groq" => Some("GROQ_API_KEY"),
+            "gemini" => Some("GEMINI_API_KEY"),
             _ => None,
         }
     }
 
-    fn default_providers() -> Vec<ProviderInfo> {
+    fn default_providers(llama_cpp_config: &LlamaCppConfig) -> Vec<ProviderInfo> {
         // Get detected Ollama models if available
         let ollama_models = Self::get_detected_ollama_models();
+        let llama_cpp_models = Self::get_detected_llama_cpp_models(llama_cpp_config);
 
         vec![
             ProviderInfo::new(
@@ -131,6 +142,31 @@ impl DropdownSelector {
                     "claude-haiku-4-20250514".to_string(),
                     "claude-3-5-sonnet-20241022".to_string(),
                     "claude-3-5-haiku-20241022".to_string(),
+                ],
+                false,
+            ),
+            ProviderInfo::new(
+                "groq",
+                "Groq (Cloud)",
+                true,
+                "llama-3.3-70b-versatile",
+                vec![
+                    "llama-3.3-70b-versatile".to_string(),
+                    "llama3-70b-8192".to_string(),
+                    "mixtral-8x7b-32768".to_string(),
+                    "gemma2-9b-it".to_string(),
+                ],
+                false,
+            ),
+            ProviderInfo::new(
+                "gemini",
+                "Gemini (Cloud)",
+                true,
+                "gemini-1.5-flash",
+                vec![
+                    "gemini-1.5-pro".to_string(),
+                    "gemini-1.5-flash".to_string(),
+                    "gemini-1.0-pro".to_string(),
                 ],
                 false,
             ),
@@ -175,8 +211,11 @@ impl DropdownSelector {
                 "llama_cpp",
                 "llama.cpp (Local)",
                 false,
-                "llama3.2",
-                vec!["llama3.2".to_string(), "mistral".to_string()],
+                llama_cpp_models
+                    .first()
+                    .map(|s| s.as_str())
+                    .unwrap_or("llama3.2"),
+                llama_cpp_models.clone(),
                 true,
             ),
         ]
@@ -209,6 +248,18 @@ impl DropdownSelector {
             "phi3".to_string(),
             "gemma2".to_string(),
         ]
+    }
+
+    /// Get detected llama.cpp models from local discovery
+    fn get_detected_llama_cpp_models(config: &LlamaCppConfig) -> Vec<String> {
+        let provider = crate::providers::LlamaCppProvider::new(config.clone());
+        let models = provider.models();
+
+        if !models.is_empty() {
+            return models;
+        }
+        // Default hardcoded list if nothing detected
+        vec!["llama3.2".to_string(), "mistral".to_string()]
     }
 
     /// Refresh the list of Ollama models (call after model download/deletion)
@@ -574,7 +625,7 @@ impl DropdownSelector {
 
 impl Default for DropdownSelector {
     fn default() -> Self {
-        Self::new()
+        Self::new(LlamaCppConfig::default()) // Fallback default config
     }
 }
 

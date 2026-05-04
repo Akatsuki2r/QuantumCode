@@ -25,6 +25,19 @@ pub enum Mode {
     Focus,
 }
 
+/// Events for async AI interaction
+#[derive(Debug)]
+pub enum AiEvent {
+    /// Partial content chunk received
+    Chunk(String),
+    /// Error occurred during streaming
+    Error(String),
+    /// Log message from the background process
+    Log(String),
+    /// Streaming completed
+    Done,
+}
+
 /// A single message in the conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
@@ -100,6 +113,16 @@ pub struct App {
     pub router_config: RouterConfig,
     /// Whether automatic model switching via router is enabled
     pub router_enabled: bool,
+    /// Whether to show verbose status/debug messages in the UI
+    pub debug_mode: bool,
+    /// Whether the dedicated debug panel is visible
+    pub show_debug_panel: bool,
+    /// Internal buffer for TUI debug display (latest 50)
+    pub ui_debug_logs: Vec<String>,
+    /// Scroll offset for the debug panel
+    pub debug_scroll_offset: usize,
+    /// Whether to automatically scroll to the bottom of the debug panel
+    pub debug_auto_scroll: bool,
     /// Input buffer for the command palette
     pub command_palette_input: String,
     /// Cursor position in command palette input
@@ -122,6 +145,8 @@ pub struct App {
     pub last_git_check: Instant,
     /// Glob patterns for RAG indexing
     pub rag_include_patterns: Vec<String>,
+    /// Receiver for async AI responses to prevent UI blocking
+    pub ai_response_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AiEvent>>,
 }
 
 impl App {
@@ -129,6 +154,19 @@ impl App {
     pub fn new(settings: Settings, theme: Theme) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
+        let llama_cpp_config = settings.llama_cpp.clone();
+        let providers: Vec<Box<dyn Provider>> = vec![
+            Box::new(crate::providers::AnthropicProvider::new()),
+            Box::new(crate::providers::OpenAIProvider::new()),
+            Box::new(crate::providers::OllamaProvider::new()),
+            Box::new(crate::providers::LlamaCppProvider::new(
+                llama_cpp_config.clone(),
+            )),
+            Box::new(crate::providers::LmStudioProvider::new()),
+            Box::new(crate::providers::GroqProvider::new()),
+            Box::new(crate::providers::GeminiProvider::new()),
+            Box::new(crate::providers::OpenCodeProvider::new()),
+        ];
 
         Self {
             settings,
@@ -143,17 +181,22 @@ impl App {
                 provider: "anthropic".to_string(),
                 model: "claude-sonnet-4-20250514".to_string(),
             },
+            providers,
             mode: Mode::Chat,
             should_quit: false,
             input: String::new(),
             cursor_position: 0,
             scroll_offset: 0,
             status: None,
-            providers: Vec::new(),
             api_keys: HashMap::new(),
-            dropdown: DropdownSelector::new(),
+            dropdown: DropdownSelector::new(llama_cpp_config),
             router_config: RouterConfig::default(),
             router_enabled: true,
+            debug_mode: false,
+            show_debug_panel: false,
+            ui_debug_logs: Vec::new(),
+            debug_scroll_offset: 0,
+            debug_auto_scroll: true,
             command_palette_input: String::new(),
             command_palette_cursor_position: 0,
             command_palette_active: false,
@@ -165,6 +208,7 @@ impl App {
             git_branch: Self::get_git_branch(),
             last_git_check: Instant::now(),
             rag_include_patterns: vec!["src/**/*.rs".to_string()],
+            ai_response_rx: None,
         }
         .initialize()
     }
@@ -223,6 +267,11 @@ impl App {
     /// Add a debug log entry
     pub fn debug_log(&mut self, message: &str) {
         tracing::debug!(target: "debug_console", "{}", message);
+        self.ui_debug_logs
+            .push(format!("[{}] {}", Utc::now().format("%H:%M:%S"), message));
+        if self.ui_debug_logs.len() > 100 {
+            self.ui_debug_logs.remove(0);
+        }
     }
 
     /// Toggle command palette visibility
@@ -239,43 +288,17 @@ impl App {
 
     /// Search the RAG index for relevant context
     /// Uses the provided token budget to limit the number of retrieved chunks.
-    pub fn search_context(&self, query: &str, token_budget: Option<usize>) -> crate::rag::RagResult {
+    pub fn search_context(
+        &self,
+        query: &str,
+        token_budget: Option<usize>,
+    ) -> crate::rag::RagResult {
         self.rag_index.search(query, token_budget)
     }
 
     /// Add a file to the RAG index
     pub fn index_file(&mut self, path: String, content: String) {
         self.rag_index.add_document(path, content);
-    }
-
-    /// Index all Rust source files in the current project
-    pub fn index_project_files(&mut self) {
-        use crate::tools::glob::find_files;
-        use std::path::Path;
-
-        let base = Path::new(".");
-        let mut paths_to_index = HashSet::new();
-
-        for pattern in &self.rag_include_patterns {
-            if let Ok(matches) = find_files(pattern, base) {
-                for path in matches {
-                    paths_to_index.insert(path);
-                }
-            }
-        }
-
-        for path in paths_to_index {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let path_str = path.to_string_lossy().to_string();
-                self.index_file(path_str, content);
-            }
-        }
-
-        tracing::debug!(
-            target: "rag",
-            "Indexed {} files into RAG",
-            self.rag_index.document_count()
-        );
     }
 
     /// Route a prompt through the router and automatically select model
@@ -307,6 +330,7 @@ impl App {
         );
 
         let decision = route(prompt, &cwd, &self.router_config);
+        self.debug_log(&format!("Router Decision: {}", decision.reasoning));
 
         tracing::info!(
             target: "router",
@@ -333,13 +357,13 @@ impl App {
                 if crate::router::model::has_local_models() {
                     "ollama".to_string()
                 } else {
-                    // Fall back to opencode if no local models
-                    "opencode".to_string()
+                    // Fall back to Gemini if no local models are available
+                    "gemini".to_string()
                 }
             }
             crate::router::ModelTier::OpenCode => "opencode".to_string(),
-            crate::router::ModelTier::Fast => "anthropic".to_string(),
-            crate::router::ModelTier::Standard => "anthropic".to_string(),
+            crate::router::ModelTier::Fast => "gemini".to_string(),
+            crate::router::ModelTier::Standard => "groq".to_string(),
             crate::router::ModelTier::Capable => "anthropic".to_string(),
         };
 
@@ -351,6 +375,87 @@ impl App {
         );
 
         (provider, model)
+    }
+
+    /// Index project files for RAG
+    pub fn index_project_files(&mut self) {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+        self.debug_log(&format!("RAG: Scanning project files in {:?}", cwd));
+
+        // Traverse the filesystem starting from current directory using walkdir
+        for entry in walkdir::WalkDir::new(&cwd)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_string_lossy();
+                // Ignore hidden directories (.git, .vscode, etc) and common build artifacts
+                !name.starts_with('.')
+                    && name != "target"
+                    && name != "node_modules"
+                    && name != "dist"
+            })
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                let path = entry.path();
+
+                // Filter for relevant text files to avoid binary noise in RAG
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                let supported = [
+                    "rs", "toml", "md", "txt", "js", "ts", "py", "c", "cpp", "h", "json", "sh",
+                    "yaml", "yml",
+                ];
+
+                if supported.contains(&ext) {
+                    if let Ok(content) = std::fs::read_to_string(path) {
+                        let relative_path = path
+                            .strip_prefix(&cwd)
+                            .unwrap_or(path)
+                            .to_string_lossy()
+                            .to_string();
+
+                        self.rag_index.add_document(relative_path, content);
+                    }
+                }
+            }
+        }
+
+        let doc_count = self.rag_index.document_count();
+        self.debug_log(&format!(
+            "RAG Indexing complete: {} documents indexed",
+            doc_count
+        ));
+        self.set_status(Some(format!("Indexed {} files for context", doc_count)));
+    }
+
+    /// Enforce a token budget on message history by removing oldest messages
+    pub fn enforce_context_budget(&mut self, max_tokens: usize) {
+        if self.session.messages.is_empty() {
+            return;
+        }
+
+        let mut current_total = 0;
+        let mut to_keep = Vec::new();
+
+        // Work backwards to keep the most recent messages
+        for msg in self.session.messages.iter().rev() {
+            let tokens = msg
+                .tokens
+                .unwrap_or_else(|| Self::estimate_tokens(&msg.content));
+            if current_total + tokens <= max_tokens {
+                current_total += tokens;
+                to_keep.push(msg.clone());
+            } else {
+                break;
+            }
+        }
+
+        if to_keep.len() < self.session.messages.len() {
+            to_keep.reverse();
+            let removed = self.session.messages.len() - to_keep.len();
+            tracing::info!(target: "app", "Trimmed {} messages to stay within {} token budget", removed, max_tokens);
+            self.session.messages = to_keep;
+        }
     }
 
     /// Add a message to the conversation
@@ -432,35 +537,6 @@ impl App {
         text.len() / 4
     }
 
-    /// Enforce a token budget on message history by removing oldest messages
-    pub fn enforce_context_budget(&mut self, max_tokens: usize) {
-        if self.session.messages.is_empty() {
-            return;
-        }
-
-        let mut current_total = 0;
-        let mut to_keep = Vec::new();
-
-        // Work backwards to keep the most recent messages
-        for msg in self.session.messages.iter().rev() {
-            // Use existing token count or estimate if missing
-            let tokens = msg.tokens.unwrap_or_else(|| Self::estimate_tokens(&msg.content));
-            if current_total + tokens <= max_tokens {
-                current_total += tokens;
-                to_keep.push(msg.clone());
-            } else {
-                break;
-            }
-        }
-
-        if to_keep.len() < self.session.messages.len() {
-            to_keep.reverse(); // Restore original order
-            let removed = self.session.messages.len() - to_keep.len();
-            tracing::info!(target: "app", "Trimmed {} messages to stay within {} token budget", removed, max_tokens);
-            self.session.messages = to_keep;
-        }
-    }
-
     /// Save the current session to disk
     pub fn save_session(&self) -> std::io::Result<()> {
         self.session.save()
@@ -497,12 +573,7 @@ impl Session {
 
     /// Get the path where a session should be stored
     fn get_storage_path(id: &str) -> PathBuf {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home)
-            .join(".config")
-            .join("quantumn-code")
-            .join("sessions")
-            .join(format!("{}.json", id))
+        crate::utils::paths::get_session_path(id)
     }
 
     /// Save the session to disk as a JSON file
@@ -529,8 +600,7 @@ impl Session {
 
     /// List all saved sessions from the storage directory
     pub fn list() -> Vec<Session> {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let dir = PathBuf::from(home).join(".config/quantumn-code/sessions");
+        let dir = crate::utils::paths::get_sessions_dir();
         let mut sessions = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(dir) {
